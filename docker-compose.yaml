@@ -1,0 +1,65 @@
+services:
+  business-finance-db:
+    image: postgres:latest
+    restart: unless-stopped
+    container_name: business-finance-db
+    environment:
+      POSTGRES_DB: business-finance-db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin@0234
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  business-finance-api:
+    build: .
+    container_name: business-finance-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+  prometheus:
+    image: prom/prometheus:v3.13.4
+    container_name: prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+  grafana:
+    image: grafana/grafana:13.0-slim
+    container_name: grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=3 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+
+  grafana-loki:
+    image: grafana/loki:main-e1cbc94
+    container_name: grafana-loki
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  prometheus_data:

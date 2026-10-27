@@ -1,6 +1,6 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.scheduler;
 
-import com.emanudev.gestaofinanceira.entry.application.FinancialEntryUseCaseService;
+import com.emanudev.gestaofinanceira.entry.application.usecase.MarkOverdueEntriesUseCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -13,10 +13,10 @@ public class OverdueTransitionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(OverdueTransitionScheduler.class);
 
-    private final FinancialEntryUseCaseService financialEntryUseCaseService;
+    private final MarkOverdueEntriesUseCase markOverdueEntriesUseCase;
 
-    public OverdueTransitionScheduler(FinancialEntryUseCaseService financialEntryUseCaseService) {
-        this.financialEntryUseCaseService = financialEntryUseCaseService;
+    public OverdueTransitionScheduler(MarkOverdueEntriesUseCase markOverdueEntriesUseCase) {
+        this.markOverdueEntriesUseCase = markOverdueEntriesUseCase;
     }
 
     @Scheduled(cron = "0 0 0 * * *", zone = "America/Sao_Paulo")
@@ -31,7 +31,7 @@ public class OverdueTransitionScheduler {
 
     private void executeOverdueTransition(String trigger) {
         try {
-            int transitionedCount = financialEntryUseCaseService.markOverdueEntries();
+            int transitionedCount = markOverdueEntriesUseCase.execute();
             log.atInfo()
                     .addKeyValue("event", "OVERDUE_SWEEP_COMPLETED")
                     .addKeyValue("trigger", trigger)

@@ -1,6 +1,9 @@
 package com.emanudev.gestaofinanceira.entry.application;
 
-import com.emanudev.gestaofinanceira.entry.application.FinancialEntryUseCaseService.CreateEntryCommand;
+import com.emanudev.gestaofinanceira.entry.application.usecase.CreateFinancialEntryUseCase;
+import com.emanudev.gestaofinanceira.entry.application.usecase.MarkOverdueEntriesUseCase;
+import com.emanudev.gestaofinanceira.entry.application.usecase.SettleFinancialEntryUseCase;
+import com.emanudev.gestaofinanceira.entry.application.usecase.UploadFiscalAttachmentUseCase;
 import com.emanudev.gestaofinanceira.entry.domain.EntryStatus;
 import com.emanudev.gestaofinanceira.entry.domain.EntryType;
 import com.emanudev.gestaofinanceira.entry.domain.FinancialEntry;
@@ -44,7 +47,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class FinancialEntryUseCaseServiceTest {
+class FinancialEntryUseCasesTest {
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-10-26T15:00:00Z");
     private static final ZoneId ZONE = ZoneId.of("America/Sao_Paulo");
@@ -52,8 +55,6 @@ class FinancialEntryUseCaseServiceTest {
 
     @Mock
     private FinancialEntryRepositoryPort entryRepository;
-    @Mock
-    private FinancialEntryQueryPort entryQueryPort;
     @Mock
     private FiscalAttachmentRepositoryPort attachmentRepository;
     @Mock
@@ -69,18 +70,19 @@ class FinancialEntryUseCaseServiceTest {
     @Mock
     private ActorContextPort actorContextPort;
 
-    private FinancialEntryUseCaseService service;
+    private CreateFinancialEntryUseCase createFinancialEntryUseCase;
+    private SettleFinancialEntryUseCase settleFinancialEntryUseCase;
+    private UploadFiscalAttachmentUseCase uploadFiscalAttachmentUseCase;
+    private MarkOverdueEntriesUseCase markOverdueEntriesUseCase;
+
     private FinancialAccount activeAccount;
     private Category operationalCategory;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(FIXED_INSTANT, ZONE);
-        service = new FinancialEntryUseCaseService(
+        createFinancialEntryUseCase = new CreateFinancialEntryUseCase(
                 entryRepository,
-                entryQueryPort,
-                attachmentRepository,
-                attachmentStoragePort,
                 accountRepository,
                 categoryRepository,
                 counterpartyRepository,
@@ -88,6 +90,27 @@ class FinancialEntryUseCaseServiceTest {
                 actorContextPort,
                 clock
         );
+        settleFinancialEntryUseCase = new SettleFinancialEntryUseCase(
+                entryRepository,
+                categoryRepository,
+                attachmentRepository,
+                auditTrailPort,
+                clock
+        );
+        uploadFiscalAttachmentUseCase = new UploadFiscalAttachmentUseCase(
+                entryRepository,
+                attachmentRepository,
+                attachmentStoragePort,
+                auditTrailPort,
+                actorContextPort,
+                clock
+        );
+        markOverdueEntriesUseCase = new MarkOverdueEntriesUseCase(
+                entryRepository,
+                auditTrailPort,
+                clock
+        );
+
         activeAccount = FinancialAccount.create("Caixa Matriz", AccountType.OPERATIONAL_LEDGER, Money.brl("100000.00"), FIXED_INSTANT);
         operationalCategory = Category.create("Fornecedores Operacionais", CategoryType.PAYABLE, false, false, FIXED_INSTANT);
     }
@@ -113,15 +136,14 @@ class FinancialEntryUseCaseServiceTest {
         when(actorContextPort.getCurrentActor()).thenReturn(ActorContext.user(UUID.randomUUID(), "analista", "ANALISTA", "127.0.0.1"));
         when(entryRepository.save(any(FinancialEntry.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        FinancialEntry created = service.createEntry(command);
+        FinancialEntry created = createFinancialEntryUseCase.execute(command);
 
         assertThat(created.status()).isEqualTo(EntryStatus.PENDING);
         assertThat(created.originalAmount()).isEqualTo(Money.brl("1200.00"));
         verify(auditTrailPort).recordTransition(eq("FINANCIAL_ENTRY"), eq(created.id()), eq(AuditAction.CREATE), eq(null), eq(created));
 
-        // Second call with same idempotencyKey returns existing without saving again
         when(entryRepository.findByIdempotencyKey("idem-key-123")).thenReturn(Optional.of(created));
-        FinancialEntry duplicateCall = service.createEntry(command);
+        FinancialEntry duplicateCall = createFinancialEntryUseCase.execute(command);
         assertThat(duplicateCall.id()).isEqualTo(created.id());
         verify(entryRepository, times(1)).save(any());
     }
@@ -149,7 +171,7 @@ class FinancialEntryUseCaseServiceTest {
         when(attachmentRepository.countByEntryOrRootEntry(existing.id(), existing.id())).thenReturn(0);
         when(entryRepository.save(any(FinancialEntry.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        SettlementOutcome outcome = service.settleEntry(
+        SettlementOutcome outcome = settleFinancialEntryUseCase.execute(
                 existing.id(),
                 SettlementCommand.partialWithSplit(Money.brl("1200.00"), TODAY)
         );
@@ -193,7 +215,7 @@ class FinancialEntryUseCaseServiceTest {
         when(attachmentRepository.save(any(FiscalAttachment.class))).thenAnswer(inv -> inv.getArgument(0));
         when(actorContextPort.getCurrentActor()).thenReturn(ActorContext.user(UUID.randomUUID(), "analista", "ANALISTA", "127.0.0.1"));
 
-        FiscalAttachment saved = service.uploadAttachment(existing.id(), "nf_7500.pdf", pdfBytes);
+        FiscalAttachment saved = uploadFiscalAttachmentUseCase.execute(existing.id(), "nf_7500.pdf", pdfBytes);
 
         assertThat(saved.contentType()).isEqualTo("application/pdf");
         assertThat(saved.fileSizeBytes()).isEqualTo(pdfBytes.length);
@@ -240,7 +262,7 @@ class FinancialEntryUseCaseServiceTest {
         when(entryRepository.findOverdueCandidates(TODAY)).thenReturn(List.of(pastDue));
         when(entryRepository.save(any(FinancialEntry.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        int count = service.markOverdueEntries();
+        int count = markOverdueEntriesUseCase.execute();
 
         assertThat(count).isEqualTo(1);
         verify(auditTrailPort).recordTransition(

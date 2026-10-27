@@ -2,7 +2,9 @@ package com.emanudev.gestaofinanceira.shared.adapter.in.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import java.util.UUID;
@@ -23,7 +25,9 @@ class GlobalExceptionHandlerTest {
 
     @BeforeEach
     void setUp() {
-        handler = new GlobalExceptionHandler();
+        ApplicationProperties properties = new ApplicationProperties();
+        ReflectionTestUtils.setField(properties, "errorBaseUri", "http://localhost:8080/errors");
+        handler = new GlobalExceptionHandler(properties);
         request = new MockHttpServletRequest("POST", "/api/v1/entries");
         MDC.put("traceId", "trace-abc-123");
     }

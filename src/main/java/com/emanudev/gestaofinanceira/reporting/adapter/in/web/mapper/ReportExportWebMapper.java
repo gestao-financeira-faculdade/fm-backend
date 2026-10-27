@@ -2,8 +2,8 @@ package com.emanudev.gestaofinanceira.reporting.adapter.in.web.mapper;
 
 import com.emanudev.gestaofinanceira.reporting.adapter.in.web.dto.ExportReportRequest;
 import com.emanudev.gestaofinanceira.reporting.application.ExportedReport;
-import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportFilter;
-import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportFormat;
+import com.emanudev.gestaofinanceira.reporting.application.ReportExportFilter;
+import com.emanudev.gestaofinanceira.reporting.application.ReportExportFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -12,68 +12,78 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @Component
 public class ReportExportWebMapper {
 
-    public ReportExportFormat toFormat(String rawFormat) {
-        return ReportExportFormat.fromString(rawFormat);
+    public ReportExportFormat toFormat(String format) {
+        return ReportExportFormat.fromString(format);
     }
 
     public ReportExportFormat toFormat(String queryFormat, ExportReportRequest body) {
-        String effectiveFormat = firstNonBlank(queryFormat, body != null ? body.format() : null);
+        String effectiveFormat = firstNonBlank(body != null ? body.format() : null, queryFormat, "CSV");
         return ReportExportFormat.fromString(effectiveFormat);
     }
 
     public ReportExportFilter toFilter(
-            LocalDate startDate,
-            LocalDate endDate,
+            String entryType,
             String status,
-            String type,
-            UUID categoryId
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search
     ) {
-        return new ReportExportFilter(startDate, endDate, status, type, categoryId);
+        return new ReportExportFilter(
+                entryType,
+                status,
+                categoryId,
+                accountId,
+                dueDateFrom,
+                dueDateTo,
+                search
+        );
     }
 
     public ReportExportFilter toFilter(
-            LocalDate startDate,
-            LocalDate endDate,
+            String entryType,
             String status,
-            String type,
             UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search,
             ExportReportRequest body
     ) {
-        LocalDate effectiveStart = startDate != null ? startDate : (body != null ? body.startDate() : null);
-        LocalDate effectiveEnd = endDate != null ? endDate : (body != null ? body.endDate() : null);
-        String effectiveStatus = firstNonBlank(status, body != null ? body.status() : null);
-        String effectiveType = firstNonBlank(type, body != null ? body.type() : null);
-        UUID effectiveCategory = categoryId != null ? categoryId : (body != null ? body.categoryId() : null);
-
-        return new ReportExportFilter(effectiveStart, effectiveEnd, effectiveStatus, effectiveType, effectiveCategory);
+        return new ReportExportFilter(
+                firstNonBlank(body != null ? body.entryType() : null, entryType, null),
+                firstNonBlank(body != null ? body.status() : null, status, null),
+                body != null && body.categoryId() != null ? body.categoryId() : categoryId,
+                body != null && body.accountId() != null ? body.accountId() : accountId,
+                body != null && body.dueDateFrom() != null ? body.dueDateFrom() : dueDateFrom,
+                body != null && body.dueDateTo() != null ? body.dueDateTo() : dueDateTo,
+                firstNonBlank(body != null ? body.search() : null, search, null)
+        );
     }
 
     public ResponseEntity<byte[]> toResponseEntity(ExportedReport exportedReport) {
         Objects.requireNonNull(exportedReport, "exportedReport must not be null");
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType(exportedReport.contentType()));
-        headers.setContentDisposition(
-                ContentDisposition.attachment()
-                        .filename(exportedReport.filename())
-                        .build()
-        );
-        headers.setContentLength(exportedReport.content().length);
-
         return ResponseEntity.ok()
-                .headers(headers)
+                .contentType(MediaType.parseMediaType(exportedReport.contentType()))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(exportedReport.filename()).build().toString()
+                )
                 .body(exportedReport.content());
     }
 
-    private String firstNonBlank(String primary, String fallback) {
-        return Optional.ofNullable(primary)
+    private static String firstNonBlank(String primary, String secondary, String defaultValue) {
+        return Stream.of(primary, secondary)
+                .filter(Objects::nonNull)
                 .filter(value -> !value.isBlank())
-                .orElse(fallback);
+                .findFirst()
+                .orElse(defaultValue);
     }
 }

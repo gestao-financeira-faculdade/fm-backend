@@ -5,104 +5,165 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.time.LocalDate;
+import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import java.time.LocalDate;
-import java.util.UUID;
-
 @Tag(
-        name = "Reporting - Export",
-        description = "Exportação de relatórios gerenciais e contábeis de lançamentos financeiros em formatos CSV (UTF-8 com BOM e proteção contra CSV Injection) e PDF."
+        name = "Exportação de Relatórios Financeiros (CSV e PDF)",
+        description = "Geração e download de relatórios analíticos de lançamentos financeiros em formato CSV (UTF-8 com BOM e delimitador ';') ou PDF."
 )
 @SecurityRequirement(name = "bearerAuth")
-@RequestMapping("/v1/reports")
+@RequestMapping("/v1")
 public interface ReportExportControllerOpenApi {
 
     @Operation(
-            summary = "Exportar lançamentos financeiros via GET",
-            description = "Gera e faz o download do arquivo de relatório (CSV ou PDF) filtrando por período, status, tipo de fluxo e categoria."
+            summary = "Exportar relatório de lançamentos via GET",
+            description = "Gera e retorna o arquivo de relatório (CSV ou PDF) aplicando os filtros informados via query parameters."
     )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Arquivo binário do relatório gerado com sucesso (text/csv ou application/pdf)"
+                    description = "Relatório gerado com sucesso",
+                    content = {
+                            @Content(mediaType = "text/csv;charset=UTF-8"),
+                            @Content(mediaType = MediaType.APPLICATION_PDF_VALUE)
+                    }
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "Formato de exportação inválido ou parâmetros de filtro inconsistentes",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))
-            ),
-            @ApiResponse(
-                    responseCode = "401",
-                    description = "Não autenticado",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+                    description = "Formato de exportação inválido (deve ser CSV ou PDF)",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             )
     })
-    @GetMapping({"/entries/export", "/export"})
+    @GetMapping("/reports/entries/export")
     ResponseEntity<byte[]> exportEntriesGet(
-            @Parameter(description = "Formato do arquivo de saída (CSV ou PDF)", example = "CSV")
-            @RequestParam(name = "format", defaultValue = "CSV") String format,
-            @Parameter(description = "Data de vencimento inicial (ISO-8601)", example = "2026-01-01")
-            @RequestParam(name = "startDate", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @Parameter(description = "Data de vencimento final (ISO-8601)", example = "2026-12-31")
-            @RequestParam(name = "endDate", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @Parameter(description = "Filtro por status do lançamento", example = "SETTLED")
-            @RequestParam(name = "status", required = false) String status,
-            @Parameter(description = "Filtro por tipo do lançamento (PAYABLE ou RECEIVABLE)", example = "PAYABLE")
-            @RequestParam(name = "type", required = false) String type,
-            @Parameter(description = "Filtro por UUID de categoria")
-            @RequestParam(name = "categoryId", required = false) UUID categoryId
+            @Parameter(description = "Formato do arquivo (CSV ou PDF)", example = "CSV")
+            @RequestParam(defaultValue = "CSV") String format,
+            @Parameter(description = "Filtro por tipo de lançamento (PAYABLE ou RECEIVABLE)")
+            @RequestParam(required = false) String entryType,
+            @Parameter(description = "Filtro por status (PENDING, OVERDUE, SETTLED, CANCELLED)")
+            @RequestParam(required = false) String status,
+            @Parameter(description = "Filtro por UUID da categoria")
+            @RequestParam(required = false) UUID categoryId,
+            @Parameter(description = "Filtro por UUID da conta financeira")
+            @RequestParam(required = false) UUID accountId,
+            @Parameter(description = "Data de vencimento inicial (ISO-8601)", example = "2026-10-01")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateFrom,
+            @Parameter(description = "Data de vencimento final (ISO-8601)", example = "2026-10-31")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateTo,
+            @Parameter(description = "Filtro textual na descrição")
+            @RequestParam(required = false) String search
     );
 
     @Operation(
-            summary = "Exportar lançamentos financeiros via POST",
-            description = "Permite solicitar a exportação de relatórios enviando os filtros via payload JSON ou combinados com query parameters."
+            summary = "Exportar relatório de lançamentos via POST",
+            description = "Gera e retorna o arquivo de relatório (CSV ou PDF) aceitando filtros tanto no corpo JSON quanto via query parameters."
     )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Arquivo binário do relatório gerado com sucesso (text/csv ou application/pdf)"
+                    description = "Relatório gerado com sucesso",
+                    content = {
+                            @Content(mediaType = "text/csv;charset=UTF-8"),
+                            @Content(mediaType = MediaType.APPLICATION_PDF_VALUE)
+                    }
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "Formato de exportação inválido ou parâmetros de filtro inconsistentes",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))
-            ),
-            @ApiResponse(
-                    responseCode = "401",
-                    description = "Não autenticado",
-                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))
+                    description = "Formato de exportação inválido",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             )
     })
-    @PostMapping({"/entries/export", "/export"})
+    @PostMapping("/reports/export")
     ResponseEntity<byte[]> exportEntriesPost(
-            @Parameter(description = "Formato do arquivo via query param (opcional se enviado no body)", example = "PDF")
-            @RequestParam(name = "format", required = false) String queryFormat,
-            @Parameter(description = "Data de vencimento inicial via query param")
-            @RequestParam(name = "startDate", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate queryStartDate,
-            @Parameter(description = "Data de vencimento final via query param")
-            @RequestParam(name = "endDate", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate queryEndDate,
-            @Parameter(description = "Status via query param")
-            @RequestParam(name = "status", required = false) String queryStatus,
-            @Parameter(description = "Tipo via query param")
-            @RequestParam(name = "type", required = false) String queryType,
-            @Parameter(description = "Categoria via query param")
-            @RequestParam(name = "categoryId", required = false) UUID queryCategoryId,
-            @RequestBody(required = false) ExportReportRequest body
+            @Parameter(description = "Formato do arquivo via query parameter (CSV ou PDF)")
+            @RequestParam(required = false) String format,
+            @Parameter(description = "Filtro por tipo de lançamento")
+            @RequestParam(required = false) String entryType,
+            @Parameter(description = "Filtro por status")
+            @RequestParam(required = false) String status,
+            @Parameter(description = "Filtro por UUID da categoria")
+            @RequestParam(required = false) UUID categoryId,
+            @Parameter(description = "Filtro por UUID da conta financeira")
+            @RequestParam(required = false) UUID accountId,
+            @Parameter(description = "Data de vencimento inicial")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateFrom,
+            @Parameter(description = "Data de vencimento final")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateTo,
+            @Parameter(description = "Filtro textual na descrição")
+            @RequestParam(required = false) String search,
+            @RequestBody(description = "Filtros e formato de exportação no corpo da requisição", required = false)
+            @org.springframework.web.bind.annotation.RequestBody(required = false) ExportReportRequest body
+    );
+
+    @Operation(
+            summary = "Exportar lançamentos em formato CSV (rota dedicada)",
+            description = "Gera o arquivo CSV (UTF-8 com BOM e separador ';') dos lançamentos filtrados."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Arquivo CSV gerado com sucesso",
+                    content = @Content(mediaType = "text/csv;charset=UTF-8")
+            )
+    })
+    @GetMapping("/entries/export/csv")
+    ResponseEntity<byte[]> exportEntriesCsvAlias(
+            @Parameter(description = "Filtro por tipo de lançamento")
+            @RequestParam(required = false) String entryType,
+            @Parameter(description = "Filtro por status")
+            @RequestParam(required = false) String status,
+            @Parameter(description = "Filtro por UUID da categoria")
+            @RequestParam(required = false) UUID categoryId,
+            @Parameter(description = "Filtro por UUID da conta financeira")
+            @RequestParam(required = false) UUID accountId,
+            @Parameter(description = "Data de vencimento inicial")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateFrom,
+            @Parameter(description = "Data de vencimento final")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateTo,
+            @Parameter(description = "Filtro textual na descrição")
+            @RequestParam(required = false) String search
+    );
+
+    @Operation(
+            summary = "Exportar lançamentos em formato PDF (rota dedicada)",
+            description = "Gera o arquivo PDF tabular dos lançamentos filtrados."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Arquivo PDF gerado com sucesso",
+                    content = @Content(mediaType = MediaType.APPLICATION_PDF_VALUE)
+            )
+    })
+    @GetMapping("/entries/export/pdf")
+    ResponseEntity<byte[]> exportEntriesPdfAlias(
+            @Parameter(description = "Filtro por tipo de lançamento")
+            @RequestParam(required = false) String entryType,
+            @Parameter(description = "Filtro por status")
+            @RequestParam(required = false) String status,
+            @Parameter(description = "Filtro por UUID da categoria")
+            @RequestParam(required = false) UUID categoryId,
+            @Parameter(description = "Filtro por UUID da conta financeira")
+            @RequestParam(required = false) UUID accountId,
+            @Parameter(description = "Data de vencimento inicial")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateFrom,
+            @Parameter(description = "Data de vencimento final")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateTo,
+            @Parameter(description = "Filtro textual na descrição")
+            @RequestParam(required = false) String search
     );
 }

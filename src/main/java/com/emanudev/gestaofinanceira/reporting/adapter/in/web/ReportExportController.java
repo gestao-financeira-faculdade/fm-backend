@@ -4,18 +4,17 @@ import com.emanudev.gestaofinanceira.reporting.adapter.in.web.dto.ExportReportRe
 import com.emanudev.gestaofinanceira.reporting.adapter.in.web.mapper.ReportExportWebMapper;
 import com.emanudev.gestaofinanceira.reporting.application.ExportEntriesReportUseCase;
 import com.emanudev.gestaofinanceira.reporting.application.ExportedReport;
-import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportFilter;
-import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportFormat;
+import com.emanudev.gestaofinanceira.reporting.application.ReportExportFilter;
+import com.emanudev.gestaofinanceira.reporting.application.ReportExportFormat;
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
-import java.util.Objects;
-import java.util.UUID;
-
 @RestController
-@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'AUDITOR')")
+@PreAuthorize("hasAnyRole('ADMIN', 'ANALISTA', 'AUDITOR')")
 public class ReportExportController implements ReportExportControllerOpenApi {
 
     private final ExportEntriesReportUseCase exportEntriesReportUseCase;
@@ -38,38 +37,98 @@ public class ReportExportController implements ReportExportControllerOpenApi {
     @Override
     public ResponseEntity<byte[]> exportEntriesGet(
             String format,
-            LocalDate startDate,
-            LocalDate endDate,
+            String entryType,
             String status,
-            String type,
-            UUID categoryId
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search
     ) {
-        ReportExportFormat exportFormat = reportExportWebMapper.toFormat(format);
-        ReportExportFilter filter = reportExportWebMapper.toFilter(startDate, endDate, status, type, categoryId);
-        ExportedReport exportedReport = exportEntriesReportUseCase.export(exportFormat, filter);
+        ReportExportFormat targetFormat = reportExportWebMapper.toFormat(format);
+        ReportExportFilter filter = reportExportWebMapper.toFilter(
+                entryType,
+                status,
+                categoryId,
+                accountId,
+                dueDateFrom,
+                dueDateTo,
+                search
+        );
+        ExportedReport exportedReport = exportEntriesReportUseCase.export(targetFormat, filter);
         return reportExportWebMapper.toResponseEntity(exportedReport);
     }
 
     @Override
     public ResponseEntity<byte[]> exportEntriesPost(
-            String queryFormat,
-            LocalDate queryStartDate,
-            LocalDate queryEndDate,
-            String queryStatus,
-            String queryType,
-            UUID queryCategoryId,
+            String format,
+            String entryType,
+            String status,
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search,
             ExportReportRequest body
     ) {
-        ReportExportFormat exportFormat = reportExportWebMapper.toFormat(queryFormat, body);
+        ReportExportFormat targetFormat = reportExportWebMapper.toFormat(format, body);
         ReportExportFilter filter = reportExportWebMapper.toFilter(
-                queryStartDate,
-                queryEndDate,
-                queryStatus,
-                queryType,
-                queryCategoryId,
+                entryType,
+                status,
+                categoryId,
+                accountId,
+                dueDateFrom,
+                dueDateTo,
+                search,
                 body
         );
-        ExportedReport exportedReport = exportEntriesReportUseCase.export(exportFormat, filter);
+        ExportedReport exportedReport = exportEntriesReportUseCase.export(targetFormat, filter);
+        return reportExportWebMapper.toResponseEntity(exportedReport);
+    }
+
+    @Override
+    public ResponseEntity<byte[]> exportEntriesCsvAlias(
+            String entryType,
+            String status,
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search
+    ) {
+        ReportExportFilter filter = reportExportWebMapper.toFilter(
+                entryType,
+                status,
+                categoryId,
+                accountId,
+                dueDateFrom,
+                dueDateTo,
+                search
+        );
+        ExportedReport exportedReport = exportEntriesReportUseCase.export(ReportExportFormat.CSV, filter);
+        return reportExportWebMapper.toResponseEntity(exportedReport);
+    }
+
+    @Override
+    public ResponseEntity<byte[]> exportEntriesPdfAlias(
+            String entryType,
+            String status,
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search
+    ) {
+        ReportExportFilter filter = reportExportWebMapper.toFilter(
+                entryType,
+                status,
+                categoryId,
+                accountId,
+                dueDateFrom,
+                dueDateTo,
+                search
+        );
+        ExportedReport exportedReport = exportEntriesReportUseCase.export(ReportExportFormat.PDF, filter);
         return reportExportWebMapper.toResponseEntity(exportedReport);
     }
 }

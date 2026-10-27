@@ -5,10 +5,12 @@ import java.util.UUID;
 
 public record ExportReportRequest(
         String format,
-        LocalDate startDate,
-        LocalDate endDate,
+        String entryType,
         String status,
-        String type,
-        UUID categoryId
+        UUID categoryId,
+        UUID accountId,
+        LocalDate dueDateFrom,
+        LocalDate dueDateTo,
+        String search
 ) {
 }

@@ -1,76 +1,53 @@
 package com.emanudev.gestaofinanceira.reporting.application;
 
-import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportEntryRow;
-import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportFilter;
-import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportFormat;
-import com.emanudev.gestaofinanceira.reporting.domain.port.in.ExportEntriesQuery;
-import com.emanudev.gestaofinanceira.reporting.domain.port.out.ReportExportPort;
-import com.emanudev.gestaofinanceira.reporting.domain.port.out.ReportingReadPort;
-import com.emanudev.gestaofinanceira.shared.exception.InvalidArgumentDomainException;
+import com.emanudev.gestaofinanceira.reporting.adapter.out.export.CsvStreamingExporter;
+import com.emanudev.gestaofinanceira.reporting.adapter.out.export.PdfReportExporter;
+import com.emanudev.gestaofinanceira.reporting.application.strategy.factory.ReportExportStrategyFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.ByteArrayOutputStream;
-import java.io.OutputStream;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Stream;
+import java.util.Set;
 
 @Service
-public class ExportEntriesReportUseCase implements ExportEntriesQuery {
+@Transactional(readOnly = true)
+public class ExportEntriesReportUseCase {
 
-    private final ReportingReadPort reportingReadPort;
-    private final Map<ReportExportFormat, ReportExportPort> exportersByFormat;
+    private final DashboardQueryPort dashboardQueryPort;
+    private final ReportExportStrategyFactory reportExportStrategyFactory;
 
+    @Autowired
     public ExportEntriesReportUseCase(
-            ReportingReadPort reportingReadPort,
-            List<ReportExportPort> exporters
+            DashboardQueryPort dashboardQueryPort,
+            ReportExportStrategyFactory reportExportStrategyFactory
     ) {
-        this.reportingReadPort = Objects.requireNonNull(reportingReadPort, "reportingReadPort must not be null");
-        Objects.requireNonNull(exporters, "exporters must not be null");
-        this.exportersByFormat = new EnumMap<>(ReportExportFormat.class);
-        for (ReportExportPort exporter : exporters) {
-            this.exportersByFormat.put(exporter.supportedFormat(), exporter);
-        }
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public void exportToStream(ReportExportFormat format, ReportExportFilter filter, OutputStream outputStream) {
-        ReportExportPort exporter = resolveExporter(format);
-        Objects.requireNonNull(filter, "filter must not be null");
-        Objects.requireNonNull(outputStream, "outputStream must not be null");
-
-        try (Stream<ReportExportEntryRow> rows = reportingReadPort.streamEntriesForExport(filter)) {
-            exporter.export(rows, filter, outputStream);
-        }
-    }
-
-    @Transactional(readOnly = true)
-    public ExportedReport export(ReportExportFormat format, ReportExportFilter filter) {
-        ReportExportPort exporter = resolveExporter(format);
-        Objects.requireNonNull(filter, "filter must not be null");
-
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(8192);
-        try (Stream<ReportExportEntryRow> rows = reportingReadPort.streamEntriesForExport(filter)) {
-            exporter.export(rows, filter, outputStream);
-        }
-
-        return new ExportedReport(
-                outputStream.toByteArray(),
-                exporter.contentType(),
-                exporter.suggestedFilename(filter)
+        this.dashboardQueryPort = Objects.requireNonNull(dashboardQueryPort, "dashboardQueryPort must not be null");
+        this.reportExportStrategyFactory = Objects.requireNonNull(
+                reportExportStrategyFactory,
+                "reportExportStrategyFactory must not be null"
         );
     }
 
-    private ReportExportPort resolveExporter(ReportExportFormat format) {
-        Objects.requireNonNull(format, "format must not be null");
-        ReportExportPort exporter = exportersByFormat.get(format);
-        if (exporter == null) {
-            throw new InvalidArgumentDomainException("Unsupported export format: " + format);
-        }
-        return exporter;
+    public ExportEntriesReportUseCase(DashboardQueryPort dashboardQueryPort) {
+        this(
+                dashboardQueryPort,
+                new ReportExportStrategyFactory(Set.of(
+                        new CsvStreamingExporter(),
+                        new PdfReportExporter()
+                ))
+        );
+    }
+
+    public List<ReportRowItem> fetchRows(ReportExportFilter filter) {
+        ReportExportFilter effectiveFilter = filter != null ? filter : ReportExportFilter.empty();
+        return dashboardQueryPort.fetchReportEntries(effectiveFilter);
+    }
+
+    public ExportedReport export(ReportExportFormat format, ReportExportFilter filter) {
+        ReportExportFilter effectiveFilter = filter != null ? filter : ReportExportFilter.empty();
+        List<ReportRowItem> rows = fetchRows(effectiveFilter);
+        return reportExportStrategyFactory.getStrategy(format).exportReport(rows, effectiveFilter);
     }
 }

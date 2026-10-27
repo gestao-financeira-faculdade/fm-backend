@@ -1,7 +1,10 @@
 package com.emanudev.gestaofinanceira.reporting.adapter.out.export;
 
 import com.emanudev.gestaofinanceira.reporting.application.ReportExportFilter;
+import com.emanudev.gestaofinanceira.reporting.application.ExportedReport;
+import com.emanudev.gestaofinanceira.reporting.application.ReportExportFormat;
 import com.emanudev.gestaofinanceira.reporting.application.ReportRowItem;
+import com.emanudev.gestaofinanceira.reporting.application.strategy.ReportExportStrategy;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -20,7 +23,20 @@ import java.util.Objects;
 import org.springframework.stereotype.Component;
 
 @Component
-public class PdfReportExporter {
+public class PdfReportExporter implements ReportExportStrategy {
+
+    public static final String CONTENT_TYPE = "application/pdf";
+    public static final String DEFAULT_FILENAME = "relatorio-financeiro.pdf";
+
+    @Override
+    public ExportedReport exportReport(List<ReportRowItem> rows, ReportExportFilter filter) {
+        return new ExportedReport(export(rows, filter), CONTENT_TYPE, DEFAULT_FILENAME);
+    }
+
+    @Override
+    public ReportExportFormat getFormat() {
+        return ReportExportFormat.PDF;
+    }
 
     public static final String PDF_HEADER_SIGNATURE = "%PDF-1.4";
     public static final String INSTITUTIONAL_TITLE =

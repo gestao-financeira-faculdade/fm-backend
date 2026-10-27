@@ -1,6 +1,10 @@
 package com.emanudev.gestaofinanceira.reporting.adapter.out.export;
 
+import com.emanudev.gestaofinanceira.reporting.application.ExportedReport;
+import com.emanudev.gestaofinanceira.reporting.application.ReportExportFilter;
+import com.emanudev.gestaofinanceira.reporting.application.ReportExportFormat;
 import com.emanudev.gestaofinanceira.reporting.application.ReportRowItem;
+import com.emanudev.gestaofinanceira.reporting.application.strategy.ReportExportStrategy;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -16,7 +20,20 @@ import java.util.Objects;
 import org.springframework.stereotype.Component;
 
 @Component
-public class CsvStreamingExporter {
+public class CsvStreamingExporter implements ReportExportStrategy {
+
+    public static final String CONTENT_TYPE = "text/csv;charset=UTF-8";
+    public static final String DEFAULT_FILENAME = "lancamentos-financeiros.csv";
+
+    @Override
+    public ExportedReport exportReport(List<ReportRowItem> rows, ReportExportFilter filter) {
+        return new ExportedReport(export(rows), CONTENT_TYPE, DEFAULT_FILENAME);
+    }
+
+    @Override
+    public ReportExportFormat getFormat() {
+        return ReportExportFormat.CSV;
+    }
 
     public static final String UTF8_BOM = "\uFEFF";
     public static final char DELIMITER = ';';

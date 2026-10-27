@@ -1,7 +1,7 @@
 package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.reference.adapter.in.web.CounterpartyController.CounterpartyResponse;
-import com.emanudev.gestaofinanceira.reference.adapter.in.web.CounterpartyController.CreateCounterpartyRequest;
+import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CounterpartyResponse;
+import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CreateCounterpartyRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;

@@ -1,7 +1,7 @@
 package com.emanudev.gestaofinanceira.simulation.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.simulation.adapter.in.web.SimulationController.RunSimulationRequest;
-import com.emanudev.gestaofinanceira.simulation.adapter.in.web.SimulationController.SimulationResponse;
+import com.emanudev.gestaofinanceira.simulation.adapter.in.web.dto.RunSimulationRequest;
+import com.emanudev.gestaofinanceira.simulation.adapter.in.web.dto.SimulationResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;

@@ -1,5 +1,6 @@
 package com.emanudev.gestaofinanceira.simulation.adapter.out.grpc;
 
+import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.shared.domain.Money;
 import com.emanudev.gestaofinanceira.shared.domain.Percentage;
 import com.emanudev.gestaofinanceira.simulation.adapter.out.grpc.proto.DailyProjectionBand;
@@ -20,7 +21,6 @@ import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -51,13 +51,24 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
     private final RiskSimulationServiceGrpc.RiskSimulationServiceBlockingStub blockingStub;
 
     @Autowired
+    public GrpcRiskSimulationAdapter(ApplicationProperties applicationProperties) {
+        this(
+                applicationProperties.getSimulationGrpcHost(),
+                applicationProperties.getSimulationGrpcPort(),
+                applicationProperties.isSimulationGrpcEnabled(),
+                applicationProperties.isSimulationGrpcFallbackEnabled(),
+                applicationProperties.getSimulationGrpcDeadlineMs(),
+                applicationProperties.getSimulationMaxConcurrent()
+        );
+    }
+
     public GrpcRiskSimulationAdapter(
-            @Value("${app.simulation.grpc.host:localhost}") String host,
-            @Value("${app.simulation.grpc.port:50051}") int port,
-            @Value("${app.simulation.grpc.enabled:false}") boolean grpcEnabled,
-            @Value("${app.simulation.grpc.fallback-enabled:true}") boolean fallbackOnUnavailable,
-            @Value("${app.simulation.grpc.deadline-ms:5000}") long deadlineMs,
-            @Value("${app.simulation.max-concurrent:4}") int maxConcurrentSimulations
+            String host,
+            int port,
+            boolean grpcEnabled,
+            boolean fallbackOnUnavailable,
+            long deadlineMs,
+            int maxConcurrentSimulations
     ) {
         this.concurrencyLimiter = new Semaphore(Math.max(1, maxConcurrentSimulations), true);
         this.grpcEnabled = grpcEnabled;

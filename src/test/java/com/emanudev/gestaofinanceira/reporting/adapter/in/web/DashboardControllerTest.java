@@ -89,7 +89,7 @@ class DashboardControllerTest {
 
         when(getExecutiveKpisUseCase.execute()).thenReturn(response);
 
-        mockMvc.perform(get("/api/v1/dashboard/kpis"))
+        mockMvc.perform(get("/v1/dashboard/kpis"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.consolidatedBalance.amount").value(154320.50))
                 .andExpect(jsonPath("$.consolidatedBalance.currency").value("BRL"))
@@ -115,7 +115,7 @@ class DashboardControllerTest {
 
         when(getExecutiveKpisUseCase.execute(referenceDate)).thenReturn(response);
 
-        mockMvc.perform(get("/api/v1/dashboard/kpis")
+        mockMvc.perform(get("/v1/dashboard/kpis")
                         .param("referenceDate", "2026-10-15"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.consolidatedBalance.amount").value(100000.00))
@@ -155,7 +155,7 @@ class DashboardControllerTest {
         when(getUncertaintyConeUseCase.execute(30, simulationId))
                 .thenReturn(new UncertaintyConeResponse(List.of(histPoint), Optional.of(cone)));
 
-        mockMvc.perform(get("/api/v1/dashboard/uncertainty-cone")
+        mockMvc.perform(get("/v1/dashboard/uncertainty-cone")
                         .param("historyDays", "30")
                         .param("simulationId", simulationId.toString()))
                 .andExpect(status().isOk())
@@ -201,7 +201,7 @@ class DashboardControllerTest {
 
         when(exportEntriesReportUseCase.fetchRows(eq(expectedFilter))).thenReturn(List.of(row));
 
-        MvcResult result = mockMvc.perform(get("/api/v1/reports/entries/export")
+        MvcResult result = mockMvc.perform(get("/v1/reports/entries/export")
                         .param("format", "CSV")
                         .param("entryType", "PAYABLE")
                         .param("status", "OVERDUE")
@@ -248,7 +248,7 @@ class DashboardControllerTest {
 
         when(exportEntriesReportUseCase.fetchRows(eq(expectedFilter))).thenReturn(List.of(row));
 
-        MvcResult result = mockMvc.perform(post("/api/v1/reports/export")
+        MvcResult result = mockMvc.perform(post("/v1/reports/export")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {

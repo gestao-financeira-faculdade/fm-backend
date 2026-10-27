@@ -1,5 +1,15 @@
 package com.emanudev.gestaofinanceira.entry.application;
 
+import com.emanudev.gestaofinanceira.entry.application.strategy.CreateEntryValidationContext;
+import com.emanudev.gestaofinanceira.entry.application.strategy.CreateEntryValidationStrategy;
+import com.emanudev.gestaofinanceira.entry.application.strategy.SettlementType;
+import com.emanudev.gestaofinanceira.entry.application.strategy.factory.SettlementStrategyFactory;
+import com.emanudev.gestaofinanceira.entry.application.strategy.impl.ActiveAccountValidationImpl;
+import com.emanudev.gestaofinanceira.entry.application.strategy.impl.ActiveCategoryValidationImpl;
+import com.emanudev.gestaofinanceira.entry.application.strategy.impl.ActiveCounterpartyValidationImpl;
+import com.emanudev.gestaofinanceira.entry.application.strategy.impl.CompatibleCategoryTypeValidationImpl;
+import com.emanudev.gestaofinanceira.entry.application.strategy.impl.FullSettlementPersistenceStrategy;
+import com.emanudev.gestaofinanceira.entry.application.strategy.impl.PartialSplitSettlementPersistenceStrategy;
 import com.emanudev.gestaofinanceira.entry.domain.EntryStatus;
 import com.emanudev.gestaofinanceira.entry.domain.EntryType;
 import com.emanudev.gestaofinanceira.entry.domain.FinancialEntry;
@@ -11,7 +21,6 @@ import com.emanudev.gestaofinanceira.reference.application.CategoryRepositoryPor
 import com.emanudev.gestaofinanceira.reference.application.CounterpartyRepositoryPort;
 import com.emanudev.gestaofinanceira.reference.application.FinancialAccountRepositoryPort;
 import com.emanudev.gestaofinanceira.reference.domain.Category;
-import com.emanudev.gestaofinanceira.reference.domain.Counterparty;
 import com.emanudev.gestaofinanceira.reference.domain.FinancialAccount;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
@@ -24,16 +33,16 @@ import com.emanudev.gestaofinanceira.shared.domain.Money;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -45,11 +54,41 @@ public class FinancialEntryUseCaseService {
     private final AttachmentStoragePort attachmentStoragePort;
     private final FinancialAccountRepositoryPort accountRepository;
     private final CategoryRepositoryPort categoryRepository;
-    private final CounterpartyRepositoryPort counterpartyRepository;
     private final AuditTrailPort auditTrailPort;
     private final ActorContextPort actorContextPort;
     private final Clock clock;
     private final FiscalAttachmentValidator attachmentValidator;
+    private final List<CreateEntryValidationStrategy> createEntryValidationStrategies;
+    private final SettlementStrategyFactory settlementStrategyFactory;
+
+    @Autowired
+    public FinancialEntryUseCaseService(
+            FinancialEntryRepositoryPort entryRepository,
+            FinancialEntryQueryPort entryQueryPort,
+            FiscalAttachmentRepositoryPort attachmentRepository,
+            AttachmentStoragePort attachmentStoragePort,
+            FinancialAccountRepositoryPort accountRepository,
+            CategoryRepositoryPort categoryRepository,
+            AuditTrailPort auditTrailPort,
+            ActorContextPort actorContextPort,
+            Clock clock,
+            FiscalAttachmentValidator attachmentValidator,
+            List<CreateEntryValidationStrategy> createEntryValidationStrategies,
+            SettlementStrategyFactory settlementStrategyFactory
+    ) {
+        this.entryRepository = entryRepository;
+        this.entryQueryPort = entryQueryPort;
+        this.attachmentRepository = attachmentRepository;
+        this.attachmentStoragePort = attachmentStoragePort;
+        this.accountRepository = accountRepository;
+        this.categoryRepository = categoryRepository;
+        this.auditTrailPort = auditTrailPort;
+        this.actorContextPort = actorContextPort;
+        this.clock = clock;
+        this.attachmentValidator = attachmentValidator;
+        this.createEntryValidationStrategies = createEntryValidationStrategies;
+        this.settlementStrategyFactory = settlementStrategyFactory;
+    }
 
     public FinancialEntryUseCaseService(
             FinancialEntryRepositoryPort entryRepository,
@@ -63,17 +102,28 @@ public class FinancialEntryUseCaseService {
             ActorContextPort actorContextPort,
             Clock clock
     ) {
-        this.entryRepository = entryRepository;
-        this.entryQueryPort = entryQueryPort;
-        this.attachmentRepository = attachmentRepository;
-        this.attachmentStoragePort = attachmentStoragePort;
-        this.accountRepository = accountRepository;
-        this.categoryRepository = categoryRepository;
-        this.counterpartyRepository = counterpartyRepository;
-        this.auditTrailPort = auditTrailPort;
-        this.actorContextPort = actorContextPort;
-        this.clock = clock;
-        this.attachmentValidator = new FiscalAttachmentValidator();
+        this(
+                entryRepository,
+                entryQueryPort,
+                attachmentRepository,
+                attachmentStoragePort,
+                accountRepository,
+                categoryRepository,
+                auditTrailPort,
+                actorContextPort,
+                clock,
+                new FiscalAttachmentValidator(),
+                List.of(
+                        new ActiveAccountValidationImpl(),
+                        new ActiveCategoryValidationImpl(),
+                        new CompatibleCategoryTypeValidationImpl(),
+                        new ActiveCounterpartyValidationImpl(counterpartyRepository)
+                ),
+                new SettlementStrategyFactory(Set.of(
+                        new FullSettlementPersistenceStrategy(entryRepository, auditTrailPort),
+                        new PartialSplitSettlementPersistenceStrategy(entryRepository, auditTrailPort)
+                ))
+        );
     }
 
     @Transactional
@@ -93,33 +143,12 @@ public class FinancialEntryUseCaseService {
         UUID resolvedAccountId = resolveAccountId(command.accountId());
         FinancialAccount account = accountRepository.findById(resolvedAccountId)
                 .orElseThrow(() -> new ResourceNotFoundException("FinancialAccount", resolvedAccountId));
-        if (!account.active()) {
-            throw new BusinessRuleViolationException("INACTIVE_ACCOUNT", "Financial account is inactive: " + account.id());
-        }
 
         Category category = categoryRepository.findById(command.categoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category", command.categoryId()));
-        if (!category.active()) {
-            throw new BusinessRuleViolationException("INACTIVE_CATEGORY", "Category is inactive: " + category.id());
-        }
-        if (command.entryType() != null && !category.categoryType().supportsEntryType(command.entryType().name())) {
-            throw new BusinessRuleViolationException(
-                    "INCOMPATIBLE_CATEGORY_TYPE",
-                    "Category '%s' (%s) is not compatible with entry type %s"
-                            .formatted(category.name(), category.categoryType(), command.entryType())
-            );
-        }
 
-        if (command.counterpartyId() != null) {
-            Counterparty counterparty = counterpartyRepository.findById(command.counterpartyId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Counterparty", command.counterpartyId()));
-            if (!counterparty.active()) {
-                throw new BusinessRuleViolationException(
-                        "INACTIVE_COUNTERPARTY",
-                        "Counterparty is inactive: " + counterparty.id()
-                );
-            }
-        }
+        CreateEntryValidationContext validationContext = new CreateEntryValidationContext(command, account, category);
+        createEntryValidationStrategies.forEach(validation -> validation.execute(validationContext));
 
         LocalDate today = LocalDate.now(clock);
         Instant now = Instant.now(clock);
@@ -183,32 +212,8 @@ public class FinancialEntryUseCaseService {
                 now
         );
 
-        FinancialEntry settledParent = entryRepository.save(outcome.settledEntry());
-
-        if (outcome.hasResidualChild()) {
-            FinancialEntry residualChild = entryRepository.save(outcome.residualChildEntry().orElseThrow());
-            Map<String, Object> splitAuditState = new LinkedHashMap<>();
-            splitAuditState.put("settledEntry", settledParent);
-            splitAuditState.put("residualChildEntry", residualChild);
-
-            auditTrailPort.recordTransition(
-                    "FINANCIAL_ENTRY",
-                    settledParent.id(),
-                    AuditAction.PARTIAL_SETTLE_SPLIT,
-                    entry,
-                    splitAuditState
-            );
-            return new SettlementOutcome(settledParent, Optional.of(residualChild));
-        }
-
-        auditTrailPort.recordTransition(
-                "FINANCIAL_ENTRY",
-                settledParent.id(),
-                AuditAction.SETTLE,
-                entry,
-                settledParent
-        );
-        return new SettlementOutcome(settledParent, Optional.empty());
+        SettlementType settlementType = SettlementType.fromOutcome(outcome);
+        return settlementStrategyFactory.getStrategy(settlementType).execute(entry, outcome);
     }
 
     @Transactional

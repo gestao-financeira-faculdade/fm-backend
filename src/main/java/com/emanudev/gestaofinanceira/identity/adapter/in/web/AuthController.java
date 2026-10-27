@@ -16,19 +16,13 @@ import com.emanudev.gestaofinanceira.identity.application.usecase.LogoutUseCase;
 import com.emanudev.gestaofinanceira.identity.application.usecase.RefreshTokenUseCase;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
-import jakarta.validation.Valid;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1")
-public class AuthController {
+public class AuthController implements AuthControllerOpenApi {
 
     private final AuthenticateUserUseCase authenticateUserUseCase;
     private final RefreshTokenUseCase refreshTokenUseCase;
@@ -50,24 +44,24 @@ public class AuthController {
         this.actorContextPort = Objects.requireNonNull(actorContextPort, "actorContextPort must not be null");
     }
 
-    @PostMapping("/auth/login")
-    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
+    @Override
+    public ResponseEntity<TokenResponse> login(LoginRequest request) {
         AuthenticationResult result = authenticateUserUseCase.execute(
                 new AuthenticateUserCommand(request.email(), request.password())
         );
         return ResponseEntity.ok(TokenResponse.from(result));
     }
 
-    @PostMapping("/auth/refresh")
-    public ResponseEntity<TokenResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+    @Override
+    public ResponseEntity<TokenResponse> refresh(RefreshTokenRequest request) {
         AuthenticationResult result = refreshTokenUseCase.execute(
                 new RefreshTokenCommand(request.refreshToken())
         );
         return ResponseEntity.ok(TokenResponse.from(result));
     }
 
-    @PostMapping("/auth/logout")
-    public ResponseEntity<Void> logout(@RequestBody(required = false) LogoutRequest request) {
+    @Override
+    public ResponseEntity<Void> logout(LogoutRequest request) {
         ActorContext actor = actorContextPort.getCurrentActor();
         UUID userId = actor != null ? actor.userId() : null;
         String refreshToken = request != null ? request.refreshToken() : null;
@@ -75,7 +69,7 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/users/me")
+    @Override
     public ResponseEntity<UserSummaryResponse> me() {
         UserProfileResult profile = getCurrentUserUseCase.getCurrentUser();
         return ResponseEntity.ok(UserSummaryResponse.from(profile));

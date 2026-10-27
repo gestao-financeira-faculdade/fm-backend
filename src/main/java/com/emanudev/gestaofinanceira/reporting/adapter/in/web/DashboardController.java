@@ -7,18 +7,13 @@ import com.emanudev.gestaofinanceira.reporting.application.UncertaintyConeRespon
 import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1/dashboard")
 @PreAuthorize("hasAnyRole('ADMIN', 'ANALISTA', 'AUDITOR')")
-public class DashboardController {
+public class DashboardController implements DashboardControllerOpenApi {
 
     private final GetExecutiveKpisUseCase getExecutiveKpisUseCase;
     private final GetUncertaintyConeUseCase getUncertaintyConeUseCase;
@@ -37,24 +32,18 @@ public class DashboardController {
         );
     }
 
-    @GetMapping("/kpis")
-    public ResponseEntity<ExecutiveKpiResponse> getExecutiveKpis(
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate referenceDate
-    ) {
+    @Override
+    public ResponseEntity<ExecutiveKpiResponse> getExecutiveKpis(LocalDate referenceDate) {
         ExecutiveKpiResponse response = referenceDate != null
                 ? getExecutiveKpisUseCase.execute(referenceDate)
                 : getExecutiveKpisUseCase.execute();
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/uncertainty-cone")
+    @Override
     public ResponseEntity<UncertaintyConeResponse> getUncertaintyCone(
-            @RequestParam(required = false) Integer historyDays,
-            @RequestParam(required = false) UUID simulationId,
-            @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            Integer historyDays,
+            UUID simulationId,
             LocalDate referenceDate
     ) {
         UncertaintyConeResponse response = referenceDate != null

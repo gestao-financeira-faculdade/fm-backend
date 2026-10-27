@@ -10,23 +10,16 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1")
 @PreAuthorize("hasAnyRole('ADMIN', 'ANALISTA', 'AUDITOR')")
-public class ReportExportController {
+public class ReportExportController implements ReportExportControllerOpenApi {
 
     private static final MediaType CSV_MEDIA_TYPE = MediaType.parseMediaType("text/csv;charset=UTF-8");
     private static final String CSV_FILENAME = "lancamentos-financeiros.csv";
@@ -55,16 +48,16 @@ public class ReportExportController {
         );
     }
 
-    @GetMapping("/reports/entries/export")
+    @Override
     public ResponseEntity<byte[]> exportEntriesGet(
-            @RequestParam(defaultValue = "CSV") String format,
-            @RequestParam(required = false) String entryType,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) UUID accountId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateTo,
-            @RequestParam(required = false) String search
+            String format,
+            String entryType,
+            String status,
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search
     ) {
         ReportExportFormat targetFormat = ReportExportFormat.fromString(format);
         ReportExportFilter filter = new ReportExportFilter(
@@ -79,17 +72,17 @@ public class ReportExportController {
         return buildExportResponse(targetFormat, filter);
     }
 
-    @PostMapping("/reports/export")
+    @Override
     public ResponseEntity<byte[]> exportEntriesPost(
-            @RequestParam(required = false) String format,
-            @RequestParam(required = false) String entryType,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) UUID accountId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateTo,
-            @RequestParam(required = false) String search,
-            @RequestBody(required = false) ExportReportRequest body
+            String format,
+            String entryType,
+            String status,
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search,
+            ExportReportRequest body
     ) {
         String effectiveFormat = firstNonBlank(body != null ? body.format() : null, format, "CSV");
         ReportExportFormat targetFormat = ReportExportFormat.fromString(effectiveFormat);
@@ -106,15 +99,15 @@ public class ReportExportController {
         return buildExportResponse(targetFormat, filter);
     }
 
-    @GetMapping("/entries/export/csv")
+    @Override
     public ResponseEntity<byte[]> exportEntriesCsvAlias(
-            @RequestParam(required = false) String entryType,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) UUID accountId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateTo,
-            @RequestParam(required = false) String search
+            String entryType,
+            String status,
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search
     ) {
         ReportExportFilter filter = new ReportExportFilter(
                 entryType,
@@ -128,15 +121,15 @@ public class ReportExportController {
         return buildExportResponse(ReportExportFormat.CSV, filter);
     }
 
-    @GetMapping("/entries/export/pdf")
+    @Override
     public ResponseEntity<byte[]> exportEntriesPdfAlias(
-            @RequestParam(required = false) String entryType,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) UUID accountId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDateTo,
-            @RequestParam(required = false) String search
+            String entryType,
+            String status,
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search
     ) {
         ReportExportFilter filter = new ReportExportFilter(
                 entryType,

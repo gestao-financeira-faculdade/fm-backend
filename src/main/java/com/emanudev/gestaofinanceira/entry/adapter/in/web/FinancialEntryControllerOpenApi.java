@@ -1,10 +1,10 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.FinancialEntryController.CancelFinancialEntryRequest;
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.FinancialEntryController.CreateFinancialEntryRequest;
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.FinancialEntryController.FinancialEntryResponse;
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.FinancialEntryController.SettleFinancialEntryRequest;
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.FinancialEntryController.SettlementResponse;
+import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CancelFinancialEntryRequest;
+import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CreateFinancialEntryRequest;
+import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.FinancialEntryResponse;
+import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.SettleFinancialEntryRequest;
+import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.SettlementResponse;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntryLineageNode;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntrySummaryView;
 import com.emanudev.gestaofinanceira.entry.domain.EntryStatus;

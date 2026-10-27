@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/simulations")
+@RequestMapping("/v1/simulations")
 public class SimulationController {
 
     private final RunRiskSimulationPort runRiskSimulationPort;

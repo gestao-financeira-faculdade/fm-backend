@@ -1,191 +1,75 @@
 package com.emanudev.gestaofinanceira.reporting.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.reporting.adapter.out.export.CsvStreamingExporter;
-import com.emanudev.gestaofinanceira.reporting.adapter.out.export.PdfReportExporter;
+import com.emanudev.gestaofinanceira.reporting.adapter.in.web.dto.ExportReportRequest;
+import com.emanudev.gestaofinanceira.reporting.adapter.in.web.mapper.ReportExportWebMapper;
 import com.emanudev.gestaofinanceira.reporting.application.ExportEntriesReportUseCase;
-import com.emanudev.gestaofinanceira.reporting.application.ReportExportFilter;
-import com.emanudev.gestaofinanceira.reporting.application.ReportExportFormat;
-import com.emanudev.gestaofinanceira.reporting.application.ReportRowItem;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import com.emanudev.gestaofinanceira.reporting.application.ExportedReport;
+import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportFilter;
+import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
+import java.util.Objects;
+import java.util.UUID;
+
 @RestController
-@PreAuthorize("hasAnyRole('ADMIN', 'ANALISTA', 'AUDITOR')")
+@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'ANALYST', 'AUDITOR')")
 public class ReportExportController implements ReportExportControllerOpenApi {
 
-    private static final MediaType CSV_MEDIA_TYPE = MediaType.parseMediaType("text/csv;charset=UTF-8");
-    private static final String CSV_FILENAME = "lancamentos-financeiros.csv";
-    private static final String PDF_FILENAME = "relatorio-financeiro.pdf";
-
     private final ExportEntriesReportUseCase exportEntriesReportUseCase;
-    private final CsvStreamingExporter csvStreamingExporter;
-    private final PdfReportExporter pdfReportExporter;
+    private final ReportExportWebMapper reportExportWebMapper;
 
     public ReportExportController(
             ExportEntriesReportUseCase exportEntriesReportUseCase,
-            CsvStreamingExporter csvStreamingExporter,
-            PdfReportExporter pdfReportExporter
+            ReportExportWebMapper reportExportWebMapper
     ) {
         this.exportEntriesReportUseCase = Objects.requireNonNull(
                 exportEntriesReportUseCase,
                 "exportEntriesReportUseCase must not be null"
         );
-        this.csvStreamingExporter = Objects.requireNonNull(
-                csvStreamingExporter,
-                "csvStreamingExporter must not be null"
-        );
-        this.pdfReportExporter = Objects.requireNonNull(
-                pdfReportExporter,
-                "pdfReportExporter must not be null"
+        this.reportExportWebMapper = Objects.requireNonNull(
+                reportExportWebMapper,
+                "reportExportWebMapper must not be null"
         );
     }
 
     @Override
     public ResponseEntity<byte[]> exportEntriesGet(
             String format,
-            String entryType,
+            LocalDate startDate,
+            LocalDate endDate,
             String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search
+            String type,
+            UUID categoryId
     ) {
-        ReportExportFormat targetFormat = ReportExportFormat.fromString(format);
-        ReportExportFilter filter = new ReportExportFilter(
-                entryType,
-                status,
-                categoryId,
-                accountId,
-                dueDateFrom,
-                dueDateTo,
-                search
-        );
-        return buildExportResponse(targetFormat, filter);
+        ReportExportFormat exportFormat = reportExportWebMapper.toFormat(format);
+        ReportExportFilter filter = reportExportWebMapper.toFilter(startDate, endDate, status, type, categoryId);
+        ExportedReport exportedReport = exportEntriesReportUseCase.export(exportFormat, filter);
+        return reportExportWebMapper.toResponseEntity(exportedReport);
     }
 
     @Override
     public ResponseEntity<byte[]> exportEntriesPost(
-            String format,
-            String entryType,
-            String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search,
+            String queryFormat,
+            LocalDate queryStartDate,
+            LocalDate queryEndDate,
+            String queryStatus,
+            String queryType,
+            UUID queryCategoryId,
             ExportReportRequest body
     ) {
-        String effectiveFormat = firstNonBlank(body != null ? body.format() : null, format, "CSV");
-        ReportExportFormat targetFormat = ReportExportFormat.fromString(effectiveFormat);
-
-        ReportExportFilter filter = new ReportExportFilter(
-                firstNonBlank(body != null ? body.entryType() : null, entryType, null),
-                firstNonBlank(body != null ? body.status() : null, status, null),
-                body != null && body.categoryId() != null ? body.categoryId() : categoryId,
-                body != null && body.accountId() != null ? body.accountId() : accountId,
-                body != null && body.dueDateFrom() != null ? body.dueDateFrom() : dueDateFrom,
-                body != null && body.dueDateTo() != null ? body.dueDateTo() : dueDateTo,
-                firstNonBlank(body != null ? body.search() : null, search, null)
+        ReportExportFormat exportFormat = reportExportWebMapper.toFormat(queryFormat, body);
+        ReportExportFilter filter = reportExportWebMapper.toFilter(
+                queryStartDate,
+                queryEndDate,
+                queryStatus,
+                queryType,
+                queryCategoryId,
+                body
         );
-        return buildExportResponse(targetFormat, filter);
-    }
-
-    @Override
-    public ResponseEntity<byte[]> exportEntriesCsvAlias(
-            String entryType,
-            String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search
-    ) {
-        ReportExportFilter filter = new ReportExportFilter(
-                entryType,
-                status,
-                categoryId,
-                accountId,
-                dueDateFrom,
-                dueDateTo,
-                search
-        );
-        return buildExportResponse(ReportExportFormat.CSV, filter);
-    }
-
-    @Override
-    public ResponseEntity<byte[]> exportEntriesPdfAlias(
-            String entryType,
-            String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search
-    ) {
-        ReportExportFilter filter = new ReportExportFilter(
-                entryType,
-                status,
-                categoryId,
-                accountId,
-                dueDateFrom,
-                dueDateTo,
-                search
-        );
-        return buildExportResponse(ReportExportFormat.PDF, filter);
-    }
-
-    private ResponseEntity<byte[]> buildExportResponse(ReportExportFormat format, ReportExportFilter filter) {
-        List<ReportRowItem> rows = exportEntriesReportUseCase.fetchRows(filter);
-
-        if (format == ReportExportFormat.PDF) {
-            byte[] pdfBytes = pdfReportExporter.export(rows, filter);
-            return ResponseEntity.ok()
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .header(
-                            HttpHeaders.CONTENT_DISPOSITION,
-                            ContentDisposition.attachment().filename(PDF_FILENAME).build().toString()
-                    )
-                    .body(pdfBytes);
-        }
-
-        byte[] csvBytes = csvStreamingExporter.export(rows);
-        return ResponseEntity.ok()
-                .contentType(CSV_MEDIA_TYPE)
-                .header(
-                        HttpHeaders.CONTENT_DISPOSITION,
-                        ContentDisposition.attachment().filename(CSV_FILENAME).build().toString()
-                )
-                .body(csvBytes);
-    }
-
-    private static String firstNonBlank(String primary, String secondary, String defaultValue) {
-        if (primary != null && !primary.isBlank()) {
-            return primary;
-        }
-        if (secondary != null && !secondary.isBlank()) {
-            return secondary;
-        }
-        return defaultValue;
-    }
-
-    public record ExportReportRequest(
-            String format,
-            String entryType,
-            String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search
-    ) {
+        ExportedReport exportedReport = exportEntriesReportUseCase.export(exportFormat, filter);
+        return reportExportWebMapper.toResponseEntity(exportedReport);
     }
 }

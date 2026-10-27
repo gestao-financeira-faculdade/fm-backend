@@ -1,8 +1,34 @@
 package com.emanudev.gestaofinanceira.reporting.adapter.in.web;
 
+import com.emanudev.gestaofinanceira.reporting.adapter.in.web.mapper.ReportExportWebMapper;
+import com.emanudev.gestaofinanceira.reporting.adapter.out.export.CsvStreamingExporter;
+import com.emanudev.gestaofinanceira.reporting.adapter.out.export.PdfReportExporter;
+import com.emanudev.gestaofinanceira.reporting.application.ExportEntriesReportUseCase;
+import com.emanudev.gestaofinanceira.reporting.domain.model.CategorySpendItem;
+import com.emanudev.gestaofinanceira.reporting.domain.model.DashboardSummary;
+import com.emanudev.gestaofinanceira.reporting.domain.model.MonthlyCashFlowPoint;
+import com.emanudev.gestaofinanceira.reporting.domain.model.ReportExportEntryRow;
+import com.emanudev.gestaofinanceira.reporting.domain.port.in.GetDashboardSummaryQuery;
+import com.emanudev.gestaofinanceira.reporting.domain.port.out.ReportingReadPort;
+import com.emanudev.gestaofinanceira.shared.adapter.in.web.GlobalExceptionHandler;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Stream;
+
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,263 +36,177 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.emanudev.gestaofinanceira.reporting.adapter.out.export.CsvStreamingExporter;
-import com.emanudev.gestaofinanceira.reporting.adapter.out.export.PdfReportExporter;
-import com.emanudev.gestaofinanceira.reporting.application.DailyPercentileBand;
-import com.emanudev.gestaofinanceira.reporting.application.ExecutiveKpiResponse;
-import com.emanudev.gestaofinanceira.reporting.application.ExportEntriesReportUseCase;
-import com.emanudev.gestaofinanceira.reporting.application.GetExecutiveKpisUseCase;
-import com.emanudev.gestaofinanceira.reporting.application.GetUncertaintyConeUseCase;
-import com.emanudev.gestaofinanceira.reporting.application.HistoricalBalancePoint;
-import com.emanudev.gestaofinanceira.reporting.application.ProjectedSimulationCone;
-import com.emanudev.gestaofinanceira.reporting.application.ReportExportFilter;
-import com.emanudev.gestaofinanceira.reporting.application.ReportRowItem;
-import com.emanudev.gestaofinanceira.reporting.application.UncertaintyConeResponse;
-import com.emanudev.gestaofinanceira.shared.adapter.in.web.GlobalExceptionHandler;
-import com.emanudev.gestaofinanceira.shared.domain.Money;
-import com.emanudev.gestaofinanceira.shared.domain.Percentage;
-import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-@ExtendWith(MockitoExtension.class)
 class DashboardControllerTest {
 
-    @Mock
-    private GetExecutiveKpisUseCase getExecutiveKpisUseCase;
-
-    @Mock
-    private GetUncertaintyConeUseCase getUncertaintyConeUseCase;
-
-    @Mock
-    private ExportEntriesReportUseCase exportEntriesReportUseCase;
-
-    private MockMvc mockMvc;
-
-    @BeforeEach
-    void setUp() {
-        DashboardController dashboardController = new DashboardController(
-                getExecutiveKpisUseCase,
-                getUncertaintyConeUseCase
+    @Test
+    @DisplayName("GET /v1/dashboard/summary returns executive KPIs, monthly series, and category breakdown")
+    void shouldReturnDashboardSummaryJson() throws Exception {
+        GetDashboardSummaryQuery summaryQuery = mock(GetDashboardSummaryQuery.class);
+        DashboardSummary summary = new DashboardSummary(
+                new BigDecimal("125000.00"),
+                new BigDecimal("42000.00"),
+                new BigDecimal("18000.00"),
+                new BigDecimal("3500.00"),
+                149000.00d,
+                List.of(
+                        new MonthlyCashFlowPoint(
+                                YearMonth.of(2026, 3),
+                                new BigDecimal("55000.00"),
+                                new BigDecimal("31000.00"),
+                                new BigDecimal("24000.00")
+                        )
+                ),
+                List.of(
+                        new CategorySpendItem(
+                                UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                                "Cloud Infrastructure",
+                                "EXPENSE",
+                                new BigDecimal("12400.00"),
+                                4L
+                        )
+                ),
+                Instant.parse("2026-03-31T12:00:00Z")
         );
-        ReportExportController reportExportController = new ReportExportController(
-                exportEntriesReportUseCase,
-                new CsvStreamingExporter(),
-                new PdfReportExporter()
-        );
-        mockMvc = MockMvcBuilders.standaloneSetup(dashboardController, reportExportController)
+        when(summaryQuery.getSummary(any(), any(), any())).thenReturn(summary);
+
+        DashboardController controller = new DashboardController(summaryQuery);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
-    }
 
-    @Test
-    void shouldReturnExecutiveKpisForCurrentDate() throws Exception {
-        LocalDate referenceDate = LocalDate.of(2026, 10, 26);
-        Instant generatedAt = Instant.parse("2026-10-26T20:00:00Z");
-
-        ExecutiveKpiResponse response = new ExecutiveKpiResponse(
-                Money.brl("154320.50"),
-                Money.brl("18200.00"),
-                Money.brl("9450.75"),
-                Percentage.of("4.2500"),
-                referenceDate,
-                generatedAt
-        );
-
-        when(getExecutiveKpisUseCase.execute()).thenReturn(response);
-
-        mockMvc.perform(get("/v1/dashboard/kpis"))
+        mockMvc.perform(get("/v1/dashboard/summary")
+                        .param("startDate", "2026-01-01")
+                        .param("endDate", "2026-03-31")
+                        .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.consolidatedBalance.amount").value(154320.50))
-                .andExpect(jsonPath("$.consolidatedBalance.currency").value("BRL"))
-                .andExpect(jsonPath("$.totalReceivableToday.amount").value(18200.00))
-                .andExpect(jsonPath("$.totalPayableToday.amount").value(9450.75))
-                .andExpect(jsonPath("$.monthlyDelinquencyRatePct.value").value(4.25))
-                .andExpect(jsonPath("$.referenceDate").value("2026-10-26"));
-
-        verify(getExecutiveKpisUseCase).execute();
+                .andExpect(jsonPath("$.realizedBalance").value(125000.00))
+                .andExpect(jsonPath("$.accountsReceivablePending").value(42000.00))
+                .andExpect(jsonPath("$.accountsPayablePending").value(18000.00))
+                .andExpect(jsonPath("$.overdueTotal").value(3500.00))
+                .andExpect(jsonPath("$.projectedBalance30d").value(149000.00))
+                .andExpect(jsonPath("$.monthlyCashFlow[0].month").value("2026-03"))
+                .andExpect(jsonPath("$.monthlyCashFlow[0].netCashFlow").value(24000.00))
+                .andExpect(jsonPath("$.categoryBreakdown[0].categoryName").value("Cloud Infrastructure"));
     }
 
     @Test
-    void shouldReturnExecutiveKpisForExplicitReferenceDate() throws Exception {
-        LocalDate referenceDate = LocalDate.of(2026, 10, 15);
-        ExecutiveKpiResponse response = new ExecutiveKpiResponse(
-                Money.brl("100000.00"),
-                Money.brl("5000.00"),
-                Money.brl("2000.00"),
-                Percentage.zero(),
-                referenceDate,
-                Instant.parse("2026-10-15T12:00:00Z")
-        );
+    @DisplayName("GET /v1/dashboard/summary returns 400 ProblemDetail when startDate is after endDate")
+    void shouldReturn400WhenDateRangeIsInvalid() throws Exception {
+        GetDashboardSummaryQuery summaryQuery = mock(GetDashboardSummaryQuery.class);
+        when(summaryQuery.getSummary(any(), any(), any())).thenCallRealMethod();
 
-        when(getExecutiveKpisUseCase.execute(referenceDate)).thenReturn(response);
+        ReportingReadPort readPort = mock(ReportingReadPort.class);
+        com.emanudev.gestaofinanceira.reporting.application.GetDashboardSummaryUseCase useCase =
+                new com.emanudev.gestaofinanceira.reporting.application.GetDashboardSummaryUseCase(readPort);
 
-        mockMvc.perform(get("/v1/dashboard/kpis")
-                        .param("referenceDate", "2026-10-15"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.consolidatedBalance.amount").value(100000.00))
-                .andExpect(jsonPath("$.referenceDate").value("2026-10-15"));
+        DashboardController controller = new DashboardController(useCase);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
 
-        verify(getExecutiveKpisUseCase).execute(referenceDate);
+        mockMvc.perform(get("/v1/dashboard/summary")
+                        .param("startDate", "2026-06-01")
+                        .param("endDate", "2026-01-01")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error_code").value("INVALID_ARGUMENT"));
     }
 
     @Test
-    void shouldReturnUncertaintyConeWithHistoricalAndProjectedSeries() throws Exception {
-        UUID simulationId = UUID.fromString("0192c8a4-0000-7000-8000-000000000999");
-        LocalDate today = LocalDate.of(2026, 10, 26);
-
-        HistoricalBalancePoint histPoint = new HistoricalBalancePoint(today, Money.brl("80000.00"));
-        DailyPercentileBand bandDay1 = new DailyPercentileBand(
-                1,
-                today.plusDays(1),
-                new BigDecimal("-5000.00"),
-                new BigDecimal("10000.00"),
-                new BigDecimal("45000.00"),
-                new BigDecimal("78000.00"),
-                new BigDecimal("95000.00"),
-                new BigDecimal("110000.00")
-        );
-        ProjectedSimulationCone cone = new ProjectedSimulationCone(
-                simulationId,
-                30,
-                100_000,
-                Money.brl("-5000.00"),
-                Money.brl("78000.00"),
-                Percentage.of("6.5000"),
-                "OpenCL GPU",
-                Instant.parse("2026-10-26T20:10:00Z"),
-                List.of(bandDay1)
-        );
-
-        when(getUncertaintyConeUseCase.execute(30, simulationId))
-                .thenReturn(new UncertaintyConeResponse(List.of(histPoint), Optional.of(cone)));
-
-        mockMvc.perform(get("/v1/dashboard/uncertainty-cone")
-                        .param("historyDays", "30")
-                        .param("simulationId", simulationId.toString()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.historicalSeries.length()").value(1))
-                .andExpect(jsonPath("$.historicalSeries[0].balance.amount").value(80000.00))
-                .andExpect(jsonPath("$.projectionCone.simulationId").value(simulationId.toString()))
-                .andExpect(jsonPath("$.projectionCone.horizonDays").value(30))
-                .andExpect(jsonPath("$.projectionCone.numScenarios").value(100000))
-                .andExpect(jsonPath("$.projectionCone.var99.amount").value(-5000.00))
-                .andExpect(jsonPath("$.projectionCone.medianP50.amount").value(78000.00))
-                .andExpect(jsonPath("$.projectionCone.ruinProbabilityPct.value").value(6.5))
-                .andExpect(jsonPath("$.projectionCone.dailyBands[0].dayOffset").value(1));
-
-        verify(getUncertaintyConeUseCase).execute(30, simulationId);
-    }
-
-    @Test
-    void shouldExportCsvReportViaGetWithFilters() throws Exception {
-        ReportExportFilter expectedFilter = new ReportExportFilter(
+    @DisplayName("GET /v1/reports/entries/export?format=CSV streams UTF-8 BOM CSV with attachment header")
+    void shouldExportCsvViaGetEndpoint() throws Exception {
+        ReportingReadPort readPort = mock(ReportingReadPort.class);
+        ReportExportEntryRow sampleRow = new ReportExportEntryRow(
+                UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
                 "PAYABLE",
-                "OVERDUE",
-                null,
-                null,
-                LocalDate.of(2026, 10, 1),
-                LocalDate.of(2026, 10, 31),
-                "Fornecedor"
+                "SETTLED",
+                "=1+1 Malicious Supplier",
+                "Infrastructure",
+                "Main Account",
+                "Main Bank",
+                "BRL",
+                new BigDecimal("1500.00"),
+                new BigDecimal("1500.00"),
+                LocalDate.of(2026, 3, 10),
+                LocalDate.of(2026, 3, 15),
+                Instant.parse("2026-03-14T15:00:00Z")
         );
-        ReportRowItem row = new ReportRowItem(
-                UUID.fromString("0192c8a4-0000-7000-8000-000000000777"),
-                "PAYABLE",
-                "OVERDUE",
-                "Fornecedor Energia",
-                "Utilidades",
-                "Conta Principal",
-                "Companhia Eletrica",
-                LocalDate.of(2026, 10, 1),
-                LocalDate.of(2026, 10, 12),
-                null,
-                new BigDecimal("3400.00"),
-                null,
-                "BRL"
-        );
+        when(readPort.streamEntriesForExport(any())).thenAnswer(inv -> Stream.of(sampleRow));
 
-        when(exportEntriesReportUseCase.fetchRows(eq(expectedFilter))).thenReturn(List.of(row));
+        CsvStreamingExporter csvExporter = new CsvStreamingExporter();
+        PdfReportExporter pdfExporter = new PdfReportExporter();
+        ExportEntriesReportUseCase useCase = new ExportEntriesReportUseCase(readPort, List.of(csvExporter, pdfExporter));
+        ReportExportWebMapper mapper = new ReportExportWebMapper();
+        ReportExportController controller = new ReportExportController(useCase, mapper);
 
-        MvcResult result = mockMvc.perform(get("/v1/reports/entries/export")
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        byte[] body = mockMvc.perform(get("/v1/reports/entries/export")
                         .param("format", "CSV")
-                        .param("entryType", "PAYABLE")
-                        .param("status", "OVERDUE")
-                        .param("dueDateFrom", "2026-10-01")
-                        .param("dueDateTo", "2026-10-31")
-                        .param("search", "Fornecedor"))
+                        .param("startDate", "2026-03-01")
+                        .param("endDate", "2026-03-31"))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
-                        org.hamcrest.Matchers.containsString("lancamentos-financeiros.csv")))
-                .andReturn();
+                .andExpect(header().string("Content-Type", "text/csv;charset=UTF-8"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
 
-        String body = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
-        assertThat(body)
-                .startsWith(CsvStreamingExporter.UTF8_BOM)
-                .contains("Fornecedor Energia;Utilidades;Conta Principal;Companhia Eletrica");
+        assertThat(body[0]).isEqualTo((byte) 0xEF);
+        assertThat(body[1]).isEqualTo((byte) 0xBB);
+        assertThat(body[2]).isEqualTo((byte) 0xBF);
+        String csvText = new String(body, 3, body.length - 3, StandardCharsets.UTF_8);
+        assertThat(csvText).contains("'=1+1 Malicious Supplier");
     }
 
     @Test
-    void shouldExportPdfReportViaPostWithJsonPayload() throws Exception {
-        ReportExportFilter expectedFilter = new ReportExportFilter(
-                "RECEIVABLE",
-                "PENDING",
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        ReportRowItem row = new ReportRowItem(
-                UUID.fromString("0192c8a4-0000-7000-8000-000000000888"),
-                "RECEIVABLE",
-                "PENDING",
-                "Fatura SaaS Corporativo",
-                "Receitas",
-                "Conta Principal",
-                "Tech Corp",
-                LocalDate.of(2026, 10, 1),
-                LocalDate.of(2026, 10, 28),
-                null,
-                new BigDecimal("15000.00"),
-                null,
-                "BRL"
-        );
+    @DisplayName("POST /v1/reports/entries/export with format=PDF returns valid PDF document")
+    void shouldExportPdfViaPostEndpoint() throws Exception {
+        ReportingReadPort readPort = mock(ReportingReadPort.class);
+        when(readPort.streamEntriesForExport(any())).thenAnswer(inv -> Stream.empty());
 
-        when(exportEntriesReportUseCase.fetchRows(eq(expectedFilter))).thenReturn(List.of(row));
+        CsvStreamingExporter csvExporter = new CsvStreamingExporter();
+        PdfReportExporter pdfExporter = new PdfReportExporter();
+        ExportEntriesReportUseCase useCase = new ExportEntriesReportUseCase(readPort, List.of(csvExporter, pdfExporter));
+        ReportExportWebMapper mapper = new ReportExportWebMapper();
+        ReportExportController controller = new ReportExportController(useCase, mapper);
 
-        MvcResult result = mockMvc.perform(post("/v1/reports/export")
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        byte[] body = mockMvc.perform(post("/v1/reports/entries/export")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "format": "PDF",
-                                  "entryType": "RECEIVABLE",
-                                  "status": "PENDING"
-                                }
-                                """))
+                        .content("{\"format\":\"PDF\",\"startDate\":\"2026-03-01\",\"endDate\":\"2026-03-31\"}"))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
-                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
-                        org.hamcrest.Matchers.containsString("relatorio-financeiro.pdf")))
-                .andReturn();
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray();
 
-        String pdfContent = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.ISO_8859_1);
-        assertThat(pdfContent)
-                .startsWith("%PDF-1.4")
-                .contains("Fatura SaaS Corporativo")
-                .endsWith("%%EOF\n");
+        String header = new String(body, 0, 5, StandardCharsets.US_ASCII);
+        assertThat(header).isEqualTo("%PDF-");
+    }
+
+    @Test
+    @DisplayName("GET /v1/reports/entries/export returns 400 ProblemDetail for unsupported format")
+    void shouldReturn400ForUnsupportedFormat() throws Exception {
+        ReportingReadPort readPort = mock(ReportingReadPort.class);
+        CsvStreamingExporter csvExporter = new CsvStreamingExporter();
+        PdfReportExporter pdfExporter = new PdfReportExporter();
+        ExportEntriesReportUseCase useCase = new ExportEntriesReportUseCase(readPort, List.of(csvExporter, pdfExporter));
+        ReportExportWebMapper mapper = new ReportExportWebMapper();
+        ReportExportController controller = new ReportExportController(useCase, mapper);
+
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mockMvc.perform(get("/v1/reports/entries/export")
+                        .param("format", "XLSX"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error_code").value("INVALID_ARGUMENT"));
     }
 }

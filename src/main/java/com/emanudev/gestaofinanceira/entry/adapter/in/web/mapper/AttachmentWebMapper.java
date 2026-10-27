@@ -1,6 +1,6 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.web.mapper;
 
-import com.emanudev.gestaofinanceira.entry.application.FinancialEntryUseCaseService.DownloadedAttachment;
+import com.emanudev.gestaofinanceira.entry.application.DownloadedAttachment;
 import com.emanudev.gestaofinanceira.entry.domain.FiscalAttachment;
 import com.emanudev.gestaofinanceira.entry.domain.InvalidAttachmentFormatException;
 import java.io.IOException;

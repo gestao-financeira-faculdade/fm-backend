@@ -5,9 +5,9 @@ import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CreateFinancialEnt
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.FinancialEntryResponse;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.SettleFinancialEntryRequest;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.SettlementResponse;
+import com.emanudev.gestaofinanceira.entry.application.CreateEntryCommand;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntrySummaryView;
-import com.emanudev.gestaofinanceira.entry.application.FinancialEntryUseCaseService;
-import com.emanudev.gestaofinanceira.entry.application.FinancialEntryUseCaseService.CreateEntryCommand;
+import com.emanudev.gestaofinanceira.entry.application.usecase.GetFinancialEntryUseCase;
 import com.emanudev.gestaofinanceira.entry.domain.FinancialEntry;
 import com.emanudev.gestaofinanceira.entry.domain.SettlementCommand;
 import com.emanudev.gestaofinanceira.entry.domain.SettlementOutcome;
@@ -105,10 +105,10 @@ public class FinancialEntryWebMapper {
                 .orElse(reasonParam);
     }
 
-    public FinancialEntryResponse toResponse(FinancialEntry entry, FinancialEntryUseCaseService entryService) {
+    public FinancialEntryResponse toResponse(FinancialEntry entry, GetFinancialEntryUseCase getFinancialEntryUseCase) {
         FinancialEntrySummaryView summary = null;
         try {
-            summary = entryService.getEntrySummaryById(entry.id());
+            summary = getFinancialEntryUseCase.getSummaryById(entry.id());
         } catch (Exception ignored) {
             // fallback to domain fields if summary is not available
         }
@@ -117,11 +117,11 @@ public class FinancialEntryWebMapper {
 
     public SettlementResponse toSettlementResponse(
             SettlementOutcome outcome,
-            FinancialEntryUseCaseService entryService
+            GetFinancialEntryUseCase getFinancialEntryUseCase
     ) {
-        FinancialEntryResponse settledResp = toResponse(outcome.settledEntry(), entryService);
+        FinancialEntryResponse settledResp = toResponse(outcome.settledEntry(), getFinancialEntryUseCase);
         FinancialEntryResponse residualResp = outcome.residualChildEntry()
-                .map(child -> toResponse(child, entryService))
+                .map(child -> toResponse(child, getFinancialEntryUseCase))
                 .orElse(null);
         return SettlementResponse.from(settledResp, residualResp);
     }

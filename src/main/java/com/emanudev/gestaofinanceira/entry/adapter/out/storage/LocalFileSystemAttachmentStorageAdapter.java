@@ -1,25 +1,29 @@
 package com.emanudev.gestaofinanceira.entry.adapter.out.storage;
 
 import com.emanudev.gestaofinanceira.entry.application.AttachmentStoragePort;
+import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Objects;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 @Component
 public class LocalFileSystemAttachmentStorageAdapter implements AttachmentStoragePort {
 
     private final Path baseDirectory;
 
-    public LocalFileSystemAttachmentStorageAdapter(
-            @Value("${app.storage.attachments-dir:./target/attachments-storage}") String attachmentsDir
-    ) {
+    @Autowired
+    public LocalFileSystemAttachmentStorageAdapter(ApplicationProperties applicationProperties) {
+        this(Objects.requireNonNull(applicationProperties, "applicationProperties must not be null").getAttachmentsDir());
+    }
+
+    public LocalFileSystemAttachmentStorageAdapter(String attachmentsDir) {
         this.baseDirectory = Paths.get(attachmentsDir).toAbsolutePath().normalize();
     }
 

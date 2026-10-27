@@ -285,8 +285,8 @@ class AccountControllerIntegrationTest {
         given(debitAccountUseCase.execute(new DebitAccountCommand(accountId, amount)))
                 .willThrow(new InsufficientBalanceException(accountId, amount, currentBalance));
 
-        // Act & Assert
-        mockMvc.perform(post("/api/v1/accounts/{id}/debits", accountId)
+        // Act & Assert (em @WebMvcTest sem context-path no MockMvc, usa-se a rota do controller "/v1/..."; em chamadas HTTP reais contra o container web, usa-se "/api/v1/...")
+        mockMvc.perform(post("/v1/accounts/{id}/debits", accountId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {

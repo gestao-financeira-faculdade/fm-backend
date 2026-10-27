@@ -9,17 +9,21 @@ import com.emanudev.gestaofinanceira.identity.application.port.out.UserRepositor
 import com.emanudev.gestaofinanceira.identity.domain.exception.InvalidCredentialsException;
 import com.emanudev.gestaofinanceira.identity.domain.model.RefreshToken;
 import com.emanudev.gestaofinanceira.identity.domain.model.User;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.annotation.Validated;
 
 @Service
+@Validated
 public class RefreshTokenUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(RefreshTokenUseCase.class);
@@ -42,17 +46,12 @@ public class RefreshTokenUseCase {
     }
 
     @Transactional
-    public AuthenticationResult execute(RefreshTokenCommand command) {
-        Objects.requireNonNull(command, "command must not be null");
+    public AuthenticationResult execute(@NotNull @Valid RefreshTokenCommand command) {
         return refresh(command.refreshToken());
     }
 
     @Transactional
-    public AuthenticationResult refresh(String rawRefreshToken) {
-        if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
-            throw new InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token ausente ou inválido.");
-        }
-
+    public AuthenticationResult refresh(@NotBlank String rawRefreshToken) {
         Instant now = Instant.now(clock);
         String tokenHash = tokenProvider.hashToken(rawRefreshToken.trim());
 
@@ -83,7 +82,6 @@ public class RefreshTokenUseCase {
             throw new InvalidCredentialsException("USER_INACTIVE", "Conta de usuário inativa ou bloqueada.");
         }
 
-        // Rotate refresh token: revoke the old one and issue a new pair
         RefreshToken revokedToken = currentToken.revoke(now);
         refreshTokenRepository.save(revokedToken);
 

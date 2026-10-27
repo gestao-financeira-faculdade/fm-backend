@@ -3,23 +3,25 @@ package com.emanudev.gestaofinanceira.identity.adapter.out.security;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
 import jakarta.servlet.http.HttpServletRequest;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-
-import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 
 @Component
 public class SecurityActorContextAdapter implements ActorContextPort {
 
     private static final String DEFAULT_IP_ADDRESS = "127.0.0.1";
+    private static final String FORWARDED_FOR_HEADER = "X-Forwarded-For";
 
     @Override
     public ActorContext getCurrentActor() {
@@ -60,36 +62,40 @@ public class SecurityActorContextAdapter implements ActorContextPort {
     }
 
     private String resolveClientIpAddress() {
-        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
-        if (attributes instanceof ServletRequestAttributes servletAttributes) {
-            HttpServletRequest request = servletAttributes.getRequest();
-            String forwardedFor = request.getHeader("X-Forwarded-For");
-            if (forwardedFor != null && !forwardedFor.isBlank()) {
-                int commaIdx = forwardedFor.indexOf(',');
-                String clientIp = commaIdx > 0 ? forwardedFor.substring(0, commaIdx).trim() : forwardedFor.trim();
-                if (!clientIp.isEmpty()) {
-                    return clientIp;
-                }
-            }
-            String remoteAddr = request.getRemoteAddr();
-            if (remoteAddr != null && !remoteAddr.isBlank()) {
-                return remoteAddr;
-            }
-        }
-        return DEFAULT_IP_ADDRESS;
+        return currentHttpRequest()
+                .flatMap(request -> extractForwardedIp(request).or(() -> extractRemoteAddr(request)))
+                .orElse(DEFAULT_IP_ADDRESS);
+    }
+
+    private Optional<HttpServletRequest> currentHttpRequest() {
+        return Optional.ofNullable(RequestContextHolder.getRequestAttributes())
+                .filter(ServletRequestAttributes.class::isInstance)
+                .map(ServletRequestAttributes.class::cast)
+                .map(ServletRequestAttributes::getRequest);
+    }
+
+    private Optional<String> extractForwardedIp(HttpServletRequest request) {
+        return Optional.ofNullable(request.getHeader(FORWARDED_FOR_HEADER))
+                .map(header -> header.split(",")[0].trim())
+                .filter(ip -> !ip.isBlank());
+    }
+
+    private Optional<String> extractRemoteAddr(HttpServletRequest request) {
+        return Optional.ofNullable(request.getRemoteAddr())
+                .map(String::trim)
+                .filter(ip -> !ip.isBlank());
     }
 
     private String extractRoleFromAuthorities(Authentication authentication) {
-        if (authentication.getAuthorities() == null) {
-            return null;
-        }
-        for (GrantedAuthority authority : authentication.getAuthorities()) {
-            String auth = authority.getAuthority();
-            if (auth != null && !auth.isBlank()) {
-                return auth.startsWith("ROLE_") ? auth.substring(5) : auth;
-            }
-        }
-        return null;
+        return Optional.ofNullable(authentication.getAuthorities())
+                .stream()
+                .flatMap(authorities -> authorities.stream().map(GrantedAuthority::getAuthority))
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(auth -> !auth.isEmpty())
+                .map(auth -> auth.startsWith("ROLE_") ? auth.substring(5) : auth)
+                .findFirst()
+                .orElse(null);
     }
 
     private UUID parseOrDeterministicUuid(String raw) {
@@ -104,11 +110,10 @@ public class SecurityActorContextAdapter implements ActorContextPort {
     }
 
     private String firstNonBlank(String... candidates) {
-        for (String candidate : candidates) {
-            if (candidate != null && !candidate.isBlank()) {
-                return candidate;
-            }
-        }
-        return null;
+        return Arrays.stream(candidates)
+                .filter(Objects::nonNull)
+                .filter(candidate -> !candidate.isBlank())
+                .findFirst()
+                .orElse(null);
     }
 }

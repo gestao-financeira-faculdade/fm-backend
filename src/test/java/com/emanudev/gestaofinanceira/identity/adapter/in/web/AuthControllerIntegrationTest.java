@@ -9,6 +9,8 @@ import com.emanudev.gestaofinanceira.identity.application.usecase.GetCurrentUser
 import com.emanudev.gestaofinanceira.identity.application.usecase.LogoutUseCase;
 import com.emanudev.gestaofinanceira.identity.application.usecase.RefreshTokenUseCase;
 import com.emanudev.gestaofinanceira.identity.config.SecurityConfig;
+import com.emanudev.gestaofinanceira.shared.adapter.in.web.GlobalExceptionHandler;
+import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.identity.domain.model.RefreshToken;
 import com.emanudev.gestaofinanceira.identity.domain.model.Role;
 import com.emanudev.gestaofinanceira.identity.domain.model.User;
@@ -346,7 +348,7 @@ class AuthControllerIntegrationTest {
 
     @Configuration
     @EnableWebMvc
-    @Import(SecurityConfig.class)
+    @Import({SecurityConfig.class, GlobalExceptionHandler.class, ApplicationProperties.class})
     static class TestConfig {
 
         @Bean

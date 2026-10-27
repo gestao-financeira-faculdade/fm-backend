@@ -2,14 +2,17 @@ package com.emanudev.gestaofinanceira.identity.adapter.out.persistence;
 
 import com.emanudev.gestaofinanceira.identity.application.port.out.UserRepositoryPort;
 import com.emanudev.gestaofinanceira.identity.domain.model.User;
-import org.springframework.stereotype.Component;
-
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.stereotype.Component;
+import org.springframework.validation.annotation.Validated;
 
 @Component
+@Validated
 public class UserPersistenceAdapter implements UserRepositoryPort {
 
     private final SpringDataUserRepository repository;
@@ -19,24 +22,19 @@ public class UserPersistenceAdapter implements UserRepositoryPort {
     }
 
     @Override
-    public Optional<User> findByEmail(String email) {
-        if (email == null || email.isBlank()) {
-            return Optional.empty();
-        }
+    public Optional<User> findByEmail(@NotBlank String email) {
         return repository.findByEmailIgnoreCase(email.trim().toLowerCase(Locale.ROOT))
                 .map(UserJpaEntity::toDomain);
     }
 
     @Override
-    public Optional<User> findById(UUID id) {
-        Objects.requireNonNull(id, "id must not be null");
+    public Optional<User> findById(@NotNull UUID id) {
         return repository.findById(id)
                 .map(UserJpaEntity::toDomain);
     }
 
     @Override
-    public User save(User user) {
-        Objects.requireNonNull(user, "user must not be null");
+    public User save(@NotNull User user) {
         UserJpaEntity saved = repository.save(UserJpaEntity.fromDomain(user));
         return saved.toDomain();
     }

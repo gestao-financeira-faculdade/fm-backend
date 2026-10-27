@@ -13,21 +13,6 @@ CREATE TABLE users (
     CONSTRAINT ck_users_role CHECK (role IN ('ADMIN', 'ANALISTA', 'AUDITOR'))
 );
 
-CREATE TABLE refresh_tokens (
-    id UUID NOT NULL DEFAULT uuidv7(),
-    user_id UUID NOT NULL,
-    token_hash VARCHAR(64) NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    revoked_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT pk_refresh_tokens PRIMARY KEY (id),
-    CONSTRAINT uq_refresh_tokens_hash UNIQUE (token_hash),
-    CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT
-);
-
-CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
-
 -- Initial demonstration users (default password: Admin@123)
 INSERT INTO users (id, full_name, email, password_hash, role, is_active, created_at, updated_at)
 VALUES

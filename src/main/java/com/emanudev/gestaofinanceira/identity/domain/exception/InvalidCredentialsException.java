@@ -1,8 +1,8 @@
 package com.emanudev.gestaofinanceira.identity.domain.exception;
 
-import com.emanudev.gestaofinanceira.shared.domain.exception.DomainException;
+import com.emanudev.gestaofinanceira.shared.domain.exception.UnauthorizedException;
 
-public class InvalidCredentialsException extends DomainException {
+public class InvalidCredentialsException extends UnauthorizedException {
 
     public static final String DEFAULT_ERROR_CODE = "INVALID_CREDENTIALS";
 

@@ -3,17 +3,22 @@ package com.emanudev.gestaofinanceira.identity.application.usecase;
 import com.emanudev.gestaofinanceira.identity.application.port.in.LogoutCommand;
 import com.emanudev.gestaofinanceira.identity.application.port.out.RefreshTokenRepositoryPort;
 import com.emanudev.gestaofinanceira.identity.application.port.out.TokenProviderPort;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.util.Objects;
-import java.util.UUID;
+import org.springframework.validation.annotation.Validated;
 
 @Service
+@Validated
 public class LogoutUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(LogoutUseCase.class);
@@ -33,19 +38,18 @@ public class LogoutUseCase {
     }
 
     @Transactional
-    public void execute(LogoutCommand command) {
-        Objects.requireNonNull(command, "command must not be null");
+    public void execute(@NotNull @Valid LogoutCommand command) {
         Instant now = Instant.now(clock);
 
-        if (command.refreshToken() != null && !command.refreshToken().isBlank()) {
-            String tokenHash = tokenProvider.hashToken(command.refreshToken().trim());
-            refreshTokenRepository.findByTokenHash(tokenHash)
-                    .ifPresent(token -> refreshTokenRepository.save(token.revoke(now)));
-        }
+        Optional.ofNullable(command.refreshToken())
+                .map(String::trim)
+                .filter(token -> !token.isEmpty())
+                .map(tokenProvider::hashToken)
+                .flatMap(refreshTokenRepository::findByTokenHash)
+                .ifPresent(token -> refreshTokenRepository.save(token.revoke(now)));
 
-        if (command.userId() != null) {
-            refreshTokenRepository.revokeAllByUserId(command.userId(), now);
-        }
+        Optional.ofNullable(command.userId())
+                .ifPresent(userId -> refreshTokenRepository.revokeAllByUserId(userId, now));
 
         log.atInfo()
                 .addKeyValue("event_type", "USER_LOGGED_OUT")
@@ -54,12 +58,12 @@ public class LogoutUseCase {
     }
 
     @Transactional
-    public void logout(String rawRefreshToken) {
+    public void logout(@NotBlank String rawRefreshToken) {
         execute(new LogoutCommand(rawRefreshToken, null));
     }
 
     @Transactional
-    public void logoutAllForUser(UUID userId) {
+    public void logoutAllForUser(@NotNull UUID userId) {
         execute(new LogoutCommand(null, userId));
     }
 }

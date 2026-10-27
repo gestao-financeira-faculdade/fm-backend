@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.context.web.WebAppConfiguration;
@@ -55,7 +56,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @ExtendWith(SpringExtension.class)
 @WebAppConfiguration
-@ContextConfiguration(classes = AuthControllerIntegrationTest.TestConfig.class)
+@ContextConfiguration(
+        classes = AuthControllerIntegrationTest.TestConfig.class,
+        initializers = ConfigDataApplicationContextInitializer.class
+)
 class AuthControllerIntegrationTest {
 
     private static final Instant FIXED_NOW = Instant.parse("2026-04-01T12:00:00Z");

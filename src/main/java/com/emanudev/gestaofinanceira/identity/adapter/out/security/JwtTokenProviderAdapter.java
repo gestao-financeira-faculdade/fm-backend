@@ -23,8 +23,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class JwtTokenProviderAdapter implements TokenProviderPort {
 
-    public static final long DEFAULT_ACCESS_TOKEN_TTL_SECONDS = ApplicationProperties.DEFAULT_JWT_ACCESS_TOKEN_TTL_SECONDS;
-
     private final JwtEncoder jwtEncoder;
     private final Clock clock;
     private final String issuer;
@@ -51,8 +49,8 @@ public class JwtTokenProviderAdapter implements TokenProviderPort {
     ) {
         this.jwtEncoder = Objects.requireNonNull(jwtEncoder, "jwtEncoder must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
-        this.issuer = ApplicationProperties.DEFAULT_JWT_ISSUER;
-        this.accessTokenTtlSeconds = accessTokenTtlSeconds > 0 ? accessTokenTtlSeconds : DEFAULT_ACCESS_TOKEN_TTL_SECONDS;
+        this.issuer = "gestao-financeira";
+        this.accessTokenTtlSeconds = accessTokenTtlSeconds;
     }
 
     @Override

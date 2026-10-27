@@ -11,12 +11,44 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  business-finance-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    container_name: business-finance-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  ministack:
+    image: ministackorg/ministack:latest
+    restart: unless-stopped
+    container_name: ministack
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - ministack_data:/data
+
   business-finance-api:
     build: .
     container_name: business-finance-api
     restart: unless-stopped
+    depends_on:
+      - business-finance-db
+      - business-finance-redis
+      - ministack
+    environment:
+      DB_HOST: business-finance-db
+      REDIS_HOST: business-finance-redis
+      APP_S3_ENDPOINT: http://ministack:4566
     ports:
       - "8080:8080"
+
   prometheus:
     image: prom/prometheus:v3.13.4
     container_name: prometheus
@@ -32,6 +64,7 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
+
   grafana:
     image: grafana/grafana:13.0-slim
     container_name: grafana
@@ -62,4 +95,6 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
+  ministack_data:
   prometheus_data:

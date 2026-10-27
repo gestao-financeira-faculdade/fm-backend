@@ -130,7 +130,7 @@ class AuthControllerIntegrationTest {
     @Test
     @DisplayName("POST /api/v1/auth/login deve retornar 200 com accessToken, refreshToken e dados do usuário")
     void shouldLoginAndReturnTokens() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/login")
+        mockMvc.perform(post("/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"admin@gestaofinanceira.com","password":"Admin@123"}
@@ -146,7 +146,7 @@ class AuthControllerIntegrationTest {
     @Test
     @DisplayName("POST /api/v1/auth/login com senha incorreta deve retornar 401 ProblemDetail")
     void shouldReturn401OnInvalidCredentials() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/login")
+        mockMvc.perform(post("/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"email":"admin@gestaofinanceira.com","password":"WrongPassword"}
@@ -159,12 +159,12 @@ class AuthControllerIntegrationTest {
     @Test
     @DisplayName("GET /api/v1/users/me deve retornar 401 sem token e 200 com token JWT válido")
     void shouldProtectUsersMeAndReturnProfileWhenAuthenticated() throws Exception {
-        mockMvc.perform(get("/api/v1/users/me"))
+        mockMvc.perform(get("/v1/users/me"))
                 .andExpect(status().isUnauthorized());
 
         String token = tokenProvider.issueAccessToken(analistaUser).accessToken();
 
-        mockMvc.perform(get("/api/v1/users/me")
+        mockMvc.perform(get("/v1/users/me")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(analistaUser.id().toString()))
@@ -178,33 +178,33 @@ class AuthControllerIntegrationTest {
         String auditorToken = tokenProvider.issueAccessToken(auditorUser).accessToken();
 
         // Leitura permitida em lançamentos e auditoria
-        mockMvc.perform(get("/api/v1/entries")
+        mockMvc.perform(get("/v1/entries")
                         .header("Authorization", "Bearer " + auditorToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/audit-logs")
+        mockMvc.perform(get("/v1/audit-logs")
                         .header("Authorization", "Bearer " + auditorToken))
                 .andExpect(status().isOk());
 
         // Exportação permitida
-        mockMvc.perform(post("/api/v1/reports/export")
+        mockMvc.perform(post("/v1/reports/export")
                         .header("Authorization", "Bearer " + auditorToken))
                 .andExpect(status().isOk());
 
         // Mutações bloqueadas com 403 Forbidden
-        mockMvc.perform(post("/api/v1/entries")
+        mockMvc.perform(post("/v1/entries")
                         .header("Authorization", "Bearer " + auditorToken))
                 .andExpect(status().isForbidden());
 
-        mockMvc.perform(delete("/api/v1/entries/" + UUID.randomUUID())
+        mockMvc.perform(delete("/v1/entries/" + UUID.randomUUID())
                         .header("Authorization", "Bearer " + auditorToken))
                 .andExpect(status().isForbidden());
 
-        mockMvc.perform(post("/api/v1/accounts")
+        mockMvc.perform(post("/v1/accounts")
                         .header("Authorization", "Bearer " + auditorToken))
                 .andExpect(status().isForbidden());
 
-        mockMvc.perform(post("/api/v1/simulations")
+        mockMvc.perform(post("/v1/simulations")
                         .header("Authorization", "Bearer " + auditorToken))
                 .andExpect(status().isForbidden());
     }
@@ -215,24 +215,24 @@ class AuthControllerIntegrationTest {
         String analistaToken = tokenProvider.issueAccessToken(analistaUser).accessToken();
 
         // Operações permitidas ao ANALISTA
-        mockMvc.perform(post("/api/v1/entries")
+        mockMvc.perform(post("/v1/entries")
                         .header("Authorization", "Bearer " + analistaToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/simulations/latest")
+        mockMvc.perform(get("/v1/simulations/latest")
                         .header("Authorization", "Bearer " + analistaToken))
                 .andExpect(status().isOk());
 
         // Operações bloqueadas (403 Forbidden) para ANALISTA
-        mockMvc.perform(get("/api/v1/audit-logs")
+        mockMvc.perform(get("/v1/audit-logs")
                         .header("Authorization", "Bearer " + analistaToken))
                 .andExpect(status().isForbidden());
 
-        mockMvc.perform(post("/api/v1/simulations")
+        mockMvc.perform(post("/v1/simulations")
                         .header("Authorization", "Bearer " + analistaToken))
                 .andExpect(status().isForbidden());
 
-        mockMvc.perform(delete("/api/v1/entries/" + UUID.randomUUID())
+        mockMvc.perform(delete("/v1/entries/" + UUID.randomUUID())
                         .header("Authorization", "Bearer " + analistaToken))
                 .andExpect(status().isForbidden());
     }
@@ -242,19 +242,19 @@ class AuthControllerIntegrationTest {
     void adminShouldHaveFullAccessAcrossAllEndpoints() throws Exception {
         String adminToken = tokenProvider.issueAccessToken(adminUser).accessToken();
 
-        mockMvc.perform(post("/api/v1/entries")
+        mockMvc.perform(post("/v1/entries")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(delete("/api/v1/entries/" + UUID.randomUUID())
+        mockMvc.perform(delete("/v1/entries/" + UUID.randomUUID())
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/simulations")
+        mockMvc.perform(post("/v1/simulations")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/audit-logs")
+        mockMvc.perform(get("/v1/audit-logs")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk());
     }
@@ -262,42 +262,42 @@ class AuthControllerIntegrationTest {
     @RestController
     static class RbacProbeController {
 
-        @GetMapping("/api/v1/entries")
+        @GetMapping("/v1/entries")
         public Map<String, String> listEntries() {
             return Map.of("status", "ok");
         }
 
-        @PostMapping("/api/v1/entries")
+        @PostMapping("/v1/entries")
         public Map<String, String> createEntry() {
             return Map.of("status", "created");
         }
 
-        @DeleteMapping("/api/v1/entries/{id}")
+        @DeleteMapping("/v1/entries/{id}")
         public Map<String, String> deleteEntry(@PathVariable String id) {
             return Map.of("deleted", id);
         }
 
-        @PostMapping("/api/v1/accounts")
+        @PostMapping("/v1/accounts")
         public Map<String, String> createAccount() {
             return Map.of("status", "account_created");
         }
 
-        @GetMapping("/api/v1/audit-logs")
+        @GetMapping("/v1/audit-logs")
         public Map<String, String> listAuditLogs() {
             return Map.of("status", "audit_ok");
         }
 
-        @PostMapping("/api/v1/simulations")
+        @PostMapping("/v1/simulations")
         public Map<String, String> runSimulation() {
             return Map.of("status", "simulated");
         }
 
-        @GetMapping("/api/v1/simulations/latest")
+        @GetMapping("/v1/simulations/latest")
         public Map<String, String> latestSimulation() {
             return Map.of("status", "latest_simulation");
         }
 
-        @PostMapping("/api/v1/reports/export")
+        @PostMapping("/v1/reports/export")
         public Map<String, String> exportReport() {
             return Map.of("status", "exported");
         }

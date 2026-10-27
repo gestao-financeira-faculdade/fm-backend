@@ -85,62 +85,62 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/v1/auth/login", "/v1/auth/refresh").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                         // Authenticated identity endpoints
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/users/me").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/v1/auth/logout").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/v1/users/me").authenticated()
 
                         // Audit logs: strictly ADMIN and AUDITOR (ANALISTA blocked with 403)
-                        .requestMatchers("/api/v1/audit-logs", "/api/v1/audit-logs/**").hasAnyRole("ADMIN", "AUDITOR")
-                        .requestMatchers(HttpMethod.GET, "/api/v1/entries/*/audit-history").hasAnyRole("ADMIN", "AUDITOR")
+                        .requestMatchers("/v1/audit-logs", "/v1/audit-logs/**").hasAnyRole("ADMIN", "AUDITOR")
+                        .requestMatchers(HttpMethod.GET, "/v1/entries/*/audit-history").hasAnyRole("ADMIN", "AUDITOR")
 
                         // Simulations: POST/mutations strictly ADMIN; GET allowed for all authenticated roles
-                        .requestMatchers(HttpMethod.GET, "/api/v1/simulations", "/api/v1/simulations/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
-                        .requestMatchers("/api/v1/simulations", "/api/v1/simulations/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/v1/simulations", "/v1/simulations/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
+                        .requestMatchers("/v1/simulations", "/v1/simulations/**").hasRole("ADMIN")
 
                         // Reports & Dashboard: GET and POST /api/v1/reports/export allowed for ADMIN, ANALISTA, AUDITOR
-                        .requestMatchers(HttpMethod.GET, "/api/v1/dashboard/**", "/api/v1/reports/**", "/api/v1/entries/export/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
-                        .requestMatchers(HttpMethod.POST, "/api/v1/reports/export", "/api/v1/reports/export/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
-                        .requestMatchers("/api/v1/dashboard/**", "/api/v1/reports/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
+                        .requestMatchers(HttpMethod.GET, "/v1/dashboard/**", "/v1/reports/**", "/v1/entries/export/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
+                        .requestMatchers(HttpMethod.POST, "/v1/reports/export", "/v1/reports/export/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
+                        .requestMatchers("/v1/dashboard/**", "/v1/reports/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
 
                         // Logical deletion (Soft Delete) of financial entries: strictly ADMIN
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/entries", "/api/v1/entries/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/v1/entries/*/cancel").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/v1/entries", "/v1/entries/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/v1/entries/*/cancel").hasRole("ADMIN")
 
                         // Financial mutations: allowed for ADMIN and ANALISTA (AUDITOR blocked with 403)
                         .requestMatchers(HttpMethod.POST,
-                                "/api/v1/entries", "/api/v1/entries/**",
-                                "/api/v1/accounts", "/api/v1/accounts/**",
-                                "/api/v1/financial-accounts", "/api/v1/financial-accounts/**",
-                                "/api/v1/categories", "/api/v1/categories/**",
-                                "/api/v1/counterparties", "/api/v1/counterparties/**"
+                                "/v1/entries", "/v1/entries/**",
+                                "/v1/accounts", "/v1/accounts/**",
+                                "/v1/financial-accounts", "/v1/financial-accounts/**",
+                                "/v1/categories", "/v1/categories/**",
+                                "/v1/counterparties", "/v1/counterparties/**"
                         ).hasAnyRole("ADMIN", "ANALISTA")
                         .requestMatchers(HttpMethod.PUT,
-                                "/api/v1/entries", "/api/v1/entries/**",
-                                "/api/v1/accounts", "/api/v1/accounts/**",
-                                "/api/v1/financial-accounts", "/api/v1/financial-accounts/**",
-                                "/api/v1/categories", "/api/v1/categories/**",
-                                "/api/v1/counterparties", "/api/v1/counterparties/**"
+                                "/v1/entries", "/v1/entries/**",
+                                "/v1/accounts", "/v1/accounts/**",
+                                "/v1/financial-accounts", "/v1/financial-accounts/**",
+                                "/v1/categories", "/v1/categories/**",
+                                "/v1/counterparties", "/v1/counterparties/**"
                         ).hasAnyRole("ADMIN", "ANALISTA")
                         .requestMatchers(HttpMethod.PATCH,
-                                "/api/v1/entries", "/api/v1/entries/**",
-                                "/api/v1/accounts", "/api/v1/accounts/**",
-                                "/api/v1/financial-accounts", "/api/v1/financial-accounts/**",
-                                "/api/v1/categories", "/api/v1/categories/**",
-                                "/api/v1/counterparties", "/api/v1/counterparties/**"
+                                "/v1/entries", "/v1/entries/**",
+                                "/v1/accounts", "/v1/accounts/**",
+                                "/v1/financial-accounts", "/v1/financial-accounts/**",
+                                "/v1/categories", "/v1/categories/**",
+                                "/v1/counterparties", "/v1/counterparties/**"
                         ).hasAnyRole("ADMIN", "ANALISTA")
                         .requestMatchers(HttpMethod.DELETE,
-                                "/api/v1/accounts", "/api/v1/accounts/**",
-                                "/api/v1/financial-accounts", "/api/v1/financial-accounts/**",
-                                "/api/v1/categories", "/api/v1/categories/**",
-                                "/api/v1/counterparties", "/api/v1/counterparties/**"
+                                "/v1/accounts", "/v1/accounts/**",
+                                "/v1/financial-accounts", "/v1/financial-accounts/**",
+                                "/v1/categories", "/v1/categories/**",
+                                "/v1/counterparties", "/v1/counterparties/**"
                         ).hasAnyRole("ADMIN", "ANALISTA")
 
                         // Read access to API resources for ADMIN, ANALISTA, AUDITOR
-                        .requestMatchers(HttpMethod.GET, "/api/v1/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
+                        .requestMatchers(HttpMethod.GET, "/v1/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
 
                         .anyRequest().authenticated()
                 )

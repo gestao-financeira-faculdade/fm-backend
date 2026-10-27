@@ -1,38 +1,24 @@
 package com.emanudev.gestaofinanceira.simulation.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.shared.adapter.in.web.CorrelationMdcFilter;
 import com.emanudev.gestaofinanceira.shared.domain.Percentage;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import com.emanudev.gestaofinanceira.simulation.application.port.in.GetLatestSimulationPort;
 import com.emanudev.gestaofinanceira.simulation.application.port.in.RunRiskSimulationPort;
-import com.emanudev.gestaofinanceira.simulation.domain.exception.RiskEngineUnavailableException;
 import com.emanudev.gestaofinanceira.simulation.domain.model.DailyPercentileBand;
 import com.emanudev.gestaofinanceira.simulation.domain.model.RiskSimulationResult;
 import com.emanudev.gestaofinanceira.simulation.domain.model.StressScenarioParams;
-import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.MDC;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
 import java.math.BigDecimal;
-import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1/simulations")
-public class SimulationController {
+public class SimulationController implements SimulationControllerOpenApi {
 
     private final RunRiskSimulationPort runRiskSimulationPort;
     private final GetLatestSimulationPort getLatestSimulationPort;
@@ -45,17 +31,15 @@ public class SimulationController {
         this.getLatestSimulationPort = getLatestSimulationPort;
     }
 
-    @PostMapping
+    @Override
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<SimulationResponse> runSimulation(
-            @RequestBody(required = false) RunSimulationRequest request
-    ) {
+    public ResponseEntity<SimulationResponse> runSimulation(RunSimulationRequest request) {
         StressScenarioParams params = toDomainParams(request);
         RiskSimulationResult result = runRiskSimulationPort.runSimulation(params);
         return ResponseEntity.status(HttpStatus.CREATED).body(SimulationResponse.fromDomain(result));
     }
 
-    @GetMapping("/latest")
+    @Override
     @PreAuthorize("hasAnyRole('ADMIN', 'ANALISTA', 'AUDITOR')")
     public ResponseEntity<SimulationResponse> getLatestSimulation() {
         RiskSimulationResult result = getLatestSimulationPort.getLatestSimulation()
@@ -63,41 +47,21 @@ public class SimulationController {
         return ResponseEntity.ok(SimulationResponse.fromDomain(result));
     }
 
-    @GetMapping("/{id}")
+    @Override
     @PreAuthorize("hasAnyRole('ADMIN', 'ANALISTA', 'AUDITOR')")
-    public ResponseEntity<SimulationResponse> getSimulationById(@PathVariable UUID id) {
+    public ResponseEntity<SimulationResponse> getSimulationById(UUID id) {
         RiskSimulationResult result = getLatestSimulationPort.getSimulationById(id);
         return ResponseEntity.ok(SimulationResponse.fromDomain(result));
-    }
-
-    @ExceptionHandler(RiskEngineUnavailableException.class)
-    public ProblemDetail handleRiskEngineUnavailable(
-            RiskEngineUnavailableException ex,
-            HttpServletRequest request
-    ) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
-        problem.setTitle("Risk Simulation Engine Unavailable");
-        if (request != null && request.getRequestURI() != null) {
-            problem.setInstance(URI.create(request.getRequestURI()));
-        }
-        problem.setProperty("errorCode", ex.getErrorCode());
-        problem.setProperty("timestamp", Instant.now().toString());
-        String traceId = MDC.get("traceId");
-        if (traceId == null || traceId.isBlank()) {
-            traceId = MDC.get(CorrelationMdcFilter.MDC_CORRELATION_ID);
-        }
-        problem.setProperty("traceId", traceId != null ? traceId : "N/A");
-        return problem;
     }
 
     private StressScenarioParams toDomainParams(RunSimulationRequest request) {
         if (request == null) {
             return new StressScenarioParams(
-                    30,
-                    StressScenarioParams.MIN_SCENARIOS,
-                    Percentage.of(5.0),
-                    Percentage.of(10.0),
-                    null
+                30,
+                StressScenarioParams.MIN_SCENARIOS,
+                Percentage.of(5.0),
+                Percentage.of(10.0),
+                null
             );
         }
         int horizonDays = request.horizonDays() != null ? request.horizonDays() : 30;

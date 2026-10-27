@@ -1,6 +1,5 @@
 package com.emanudev.gestaofinanceira.entry.adapter.out.storage;
 
-import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import java.nio.charset.StandardCharsets;
@@ -41,7 +40,7 @@ class S3AttachmentStorageAdapterTest {
 
     @BeforeEach
     void setUp() {
-        adapter = new S3AttachmentStorageAdapter(s3Client, new ApplicationProperties());
+        adapter = new S3AttachmentStorageAdapter(s3Client, "fiscal-attachments", true);
     }
 
     @Test

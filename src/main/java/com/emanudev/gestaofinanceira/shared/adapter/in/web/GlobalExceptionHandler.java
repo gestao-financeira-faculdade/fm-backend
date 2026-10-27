@@ -1,16 +1,22 @@
 package com.emanudev.gestaofinanceira.shared.adapter.in.web;
 
+import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
+import com.emanudev.gestaofinanceira.shared.domain.exception.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -26,12 +32,40 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private final ApplicationProperties applicationProperties;
+
+    public GlobalExceptionHandler() {
+        this(new ApplicationProperties());
+    }
+
+    @Autowired
+    public GlobalExceptionHandler(ApplicationProperties applicationProperties) {
+        this.applicationProperties = Objects.requireNonNull(applicationProperties, "applicationProperties must not be null");
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ProblemDetail handleUnauthorized(UnauthorizedException ex, HttpServletRequest request) {
+        log.atWarn()
+                .addKeyValue("event", "UNAUTHORIZED")
+                .addKeyValue("error_code", ex.getErrorCode())
+                .addKeyValue("path", request != null ? request.getRequestURI() : "N/A")
+                .log(ex.getMessage());
+
+        return buildProblemDetail(
+                HttpStatus.UNAUTHORIZED,
+                "Unauthorized",
+                ex.getMessage(),
+                ex.getErrorCode(),
+                request
+        );
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ProblemDetail handleResourceNotFound(ResourceNotFoundException ex, HttpServletRequest request) {
         log.atWarn()
                 .addKeyValue("event", "RESOURCE_NOT_FOUND")
                 .addKeyValue("error_code", ex.getErrorCode())
-                .addKeyValue("path", request.getRequestURI())
+                .addKeyValue("path", request != null ? request.getRequestURI() : "N/A")
                 .log(ex.getMessage());
 
         return buildProblemDetail(
@@ -48,7 +82,7 @@ public class GlobalExceptionHandler {
         log.atWarn()
                 .addKeyValue("event", "BUSINESS_RULE_VIOLATION")
                 .addKeyValue("error_code", ex.getErrorCode())
-                .addKeyValue("path", request.getRequestURI())
+                .addKeyValue("path", request != null ? request.getRequestURI() : "N/A")
                 .log(ex.getMessage());
 
         return buildProblemDetail(
@@ -76,7 +110,7 @@ public class GlobalExceptionHandler {
         log.atWarn()
                 .addKeyValue("event", "CONCURRENCY_CONFLICT")
                 .addKeyValue("error_code", errorCode)
-                .addKeyValue("path", request.getRequestURI())
+                .addKeyValue("path", request != null ? request.getRequestURI() : "N/A")
                 .log(detail);
 
         return buildProblemDetail(
@@ -106,12 +140,30 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException ex, HttpServletRequest request) {
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        for (ConstraintViolation<?> violation : ex.getConstraintViolations()) {
+            fieldErrors.putIfAbsent(violation.getPropertyPath().toString(), violation.getMessage());
+        }
+
+        ProblemDetail problem = buildProblemDetail(
+                HttpStatus.BAD_REQUEST,
+                "Validation Error",
+                "One or more parameters failed validation.",
+                "VALIDATION_ERROR",
+                request
+        );
+        problem.setProperty("fieldErrors", fieldErrors);
+        return problem;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
         log.atWarn()
                 .addKeyValue("event", "INVALID_ARGUMENT")
                 .addKeyValue("error_code", "INVALID_ARGUMENT")
-                .addKeyValue("path", request.getRequestURI())
+                .addKeyValue("path", request != null ? request.getRequestURI() : "N/A")
                 .log(ex.getMessage());
 
         return buildProblemDetail(
@@ -128,7 +180,7 @@ public class GlobalExceptionHandler {
         log.atWarn()
                 .addKeyValue("event", "ACCESS_DENIED")
                 .addKeyValue("error_code", "ACCESS_DENIED")
-                .addKeyValue("path", request.getRequestURI())
+                .addKeyValue("path", request != null ? request.getRequestURI() : "N/A")
                 .log("Access denied to resource");
 
         return buildProblemDetail(
@@ -149,10 +201,12 @@ public class GlobalExceptionHandler {
     ) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setTitle(title);
+        problem.setType(applicationProperties.buildErrorTypeUri(errorCode));
         if (request != null && request.getRequestURI() != null) {
             problem.setInstance(URI.create(request.getRequestURI()));
         }
         problem.setProperty("errorCode", errorCode);
+        problem.setProperty("error_code", errorCode);
         problem.setProperty("timestamp", Instant.now().toString());
         String traceId = MDC.get("traceId");
         if (traceId == null || traceId.isBlank()) {

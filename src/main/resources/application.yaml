@@ -12,6 +12,11 @@ spring:
     username: ${DB_USER:admin}
     password: ${DB_PASSWORD:admin@0234}
     driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
   jpa:
     open-in-view: false
     hibernate:
@@ -23,6 +28,26 @@ spring:
     structured:
       format:
         console: ecs
+
+app:
+  api:
+    error-base-uri: ${APP_ERROR_BASE_URI:http://localhost:8080/errors}
+  security:
+    jwt:
+      issuer: ${APP_JWT_ISSUER:gestao-financeira}
+      secret: ${APP_JWT_SECRET:default-32-bytes-secret-key-for-dev-and-test-env-2026}
+      access-token-ttl-seconds: ${APP_JWT_ACCESS_TTL_SECONDS:900}
+      refresh-token-ttl-days: ${APP_JWT_REFRESH_TTL_DAYS:7}
+  storage:
+    attachments-dir: ${APP_ATTACHMENTS_DIR:./target/attachments-storage}
+  simulation:
+    max-concurrent: ${APP_SIMULATION_MAX_CONCURRENT:4}
+    grpc:
+      host: ${APP_SIMULATION_GRPC_HOST:localhost}
+      port: ${APP_SIMULATION_GRPC_PORT:50051}
+      enabled: ${APP_SIMULATION_GRPC_ENABLED:false}
+      fallback-enabled: ${APP_SIMULATION_GRPC_FALLBACK_ENABLED:true}
+      deadline-ms: ${APP_SIMULATION_GRPC_DEADLINE_MS:5000}
 
 management:
   endpoints:

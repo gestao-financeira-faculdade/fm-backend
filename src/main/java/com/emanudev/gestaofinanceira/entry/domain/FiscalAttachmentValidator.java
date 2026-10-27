@@ -5,15 +5,12 @@ import com.emanudev.gestaofinanceira.entry.domain.strategy.factory.AttachmentSig
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.AttachmentFileNameValidationImpl;
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.AttachmentMaxSizeValidationImpl;
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.AttachmentNotEmptyValidationImpl;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 
-@Component
 public class FiscalAttachmentValidator {
 
     public static final long MAX_SIZE_BYTES = 10_485_760L; // 10 MB
@@ -25,7 +22,6 @@ public class FiscalAttachmentValidator {
     private final List<AttachmentValidationStrategy> validationStrategies;
     private final AttachmentSignatureFactory signatureFactory;
 
-    @Autowired
     public FiscalAttachmentValidator(
             List<AttachmentValidationStrategy> validationStrategies,
             AttachmentSignatureFactory signatureFactory

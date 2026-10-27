@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,7 +21,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -33,14 +33,20 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     private final ApplicationProperties applicationProperties;
+    private final Clock clock;
 
     public GlobalExceptionHandler() {
-        this(new ApplicationProperties());
+        this(new ApplicationProperties(), Clock.systemUTC());
+    }
+
+    public GlobalExceptionHandler(ApplicationProperties applicationProperties) {
+        this(applicationProperties, Clock.systemUTC());
     }
 
     @Autowired
-    public GlobalExceptionHandler(ApplicationProperties applicationProperties) {
+    public GlobalExceptionHandler(ApplicationProperties applicationProperties, Clock clock) {
         this.applicationProperties = Objects.requireNonNull(applicationProperties, "applicationProperties must not be null");
+        this.clock = clock != null ? clock : Clock.systemUTC();
     }
 
     @ExceptionHandler(UnauthorizedException.class)
@@ -96,7 +102,6 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({
             ConcurrencyConflictException.class,
-            ObjectOptimisticLockingFailureException.class,
             OptimisticLockingFailureException.class
     })
     public ProblemDetail handleConcurrencyConflict(Exception ex, HttpServletRequest request) {
@@ -207,7 +212,7 @@ public class GlobalExceptionHandler {
         }
         problem.setProperty("errorCode", errorCode);
         problem.setProperty("error_code", errorCode);
-        problem.setProperty("timestamp", Instant.now().toString());
+        problem.setProperty("timestamp", Instant.now(clock).toString());
         String traceId = MDC.get("traceId");
         if (traceId == null || traceId.isBlank()) {
             traceId = MDC.get(CorrelationMdcFilter.MDC_CORRELATION_ID);

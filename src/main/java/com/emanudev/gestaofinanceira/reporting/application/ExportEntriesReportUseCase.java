@@ -1,15 +1,11 @@
 package com.emanudev.gestaofinanceira.reporting.application;
 
-import com.emanudev.gestaofinanceira.reporting.adapter.out.export.CsvStreamingExporter;
-import com.emanudev.gestaofinanceira.reporting.adapter.out.export.PdfReportExporter;
 import com.emanudev.gestaofinanceira.reporting.application.strategy.factory.ReportExportStrategyFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 @Service
 @Transactional(readOnly = true)
@@ -18,7 +14,6 @@ public class ExportEntriesReportUseCase {
     private final DashboardQueryPort dashboardQueryPort;
     private final ReportExportStrategyFactory reportExportStrategyFactory;
 
-    @Autowired
     public ExportEntriesReportUseCase(
             DashboardQueryPort dashboardQueryPort,
             ReportExportStrategyFactory reportExportStrategyFactory
@@ -27,16 +22,6 @@ public class ExportEntriesReportUseCase {
         this.reportExportStrategyFactory = Objects.requireNonNull(
                 reportExportStrategyFactory,
                 "reportExportStrategyFactory must not be null"
-        );
-    }
-
-    public ExportEntriesReportUseCase(DashboardQueryPort dashboardQueryPort) {
-        this(
-                dashboardQueryPort,
-                new ReportExportStrategyFactory(Set.of(
-                        new CsvStreamingExporter(),
-                        new PdfReportExporter()
-                ))
         );
     }
 

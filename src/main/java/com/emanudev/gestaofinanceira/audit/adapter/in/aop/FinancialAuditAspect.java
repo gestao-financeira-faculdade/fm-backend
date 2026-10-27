@@ -1,5 +1,6 @@
 package com.emanudev.gestaofinanceira.audit.adapter.in.aop;
 
+import com.emanudev.gestaofinanceira.audit.application.AuditExecutionContext;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 import com.emanudev.gestaofinanceira.shared.application.AuditTrailPort;
 import com.emanudev.gestaofinanceira.shared.application.AuditedFinancialAction;
@@ -11,8 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.Map;
 import java.util.UUID;
 
@@ -21,7 +20,6 @@ import java.util.UUID;
 public class FinancialAuditAspect {
 
     private static final Logger log = LoggerFactory.getLogger(FinancialAuditAspect.class);
-    private static final ThreadLocal<Deque<Boolean>> EXPLICIT_AUDIT_STACK = new ThreadLocal<>();
 
     private final AuditTrailPort auditTrailPort;
 
@@ -30,11 +28,7 @@ public class FinancialAuditAspect {
     }
 
     public static void markExplicitAuditRecorded() {
-        Deque<Boolean> stack = EXPLICIT_AUDIT_STACK.get();
-        if (stack != null && !stack.isEmpty()) {
-            stack.pollFirst();
-            stack.push(Boolean.TRUE);
-        }
+        AuditExecutionContext.markExplicitAuditRecorded();
     }
 
     @Around("@annotation(auditedAction)")
@@ -42,28 +36,16 @@ public class FinancialAuditAspect {
             ProceedingJoinPoint joinPoint,
             AuditedFinancialAction auditedAction
     ) throws Throwable {
-        Deque<Boolean> stack = EXPLICIT_AUDIT_STACK.get();
-        if (stack == null) {
-            stack = new ArrayDeque<>();
-            EXPLICIT_AUDIT_STACK.set(stack);
-        }
-        stack.push(Boolean.FALSE);
+        AuditExecutionContext.beginScope();
 
         try {
             Object result = joinPoint.proceed();
-            Boolean alreadyRecorded = stack.peekFirst();
-            if (!Boolean.TRUE.equals(alreadyRecorded)) {
+            if (!AuditExecutionContext.isExplicitAuditRecorded()) {
                 recordFallbackAudit(joinPoint, auditedAction, result);
             }
             return result;
         } finally {
-            Deque<Boolean> currentStack = EXPLICIT_AUDIT_STACK.get();
-            if (currentStack != null) {
-                currentStack.pollFirst();
-                if (currentStack.isEmpty()) {
-                    EXPLICIT_AUDIT_STACK.remove();
-                }
-            }
+            AuditExecutionContext.endScope();
         }
     }
 
@@ -127,7 +109,7 @@ public class FinancialAuditAspect {
                 if (value instanceof UUID uuid) {
                     return uuid;
                 }
-            } catch ( ReflectiveOperationException ignored) {
+            } catch (ReflectiveOperationException ignored) {
                 // ignore and try next accessor
             }
         }

@@ -28,22 +28,18 @@ public class CorrelationMdcFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        try {
-            String correlationId = resolveCorrelationId(request);
-            MDC.put(MDC_CORRELATION_ID, correlationId);
-            if (MDC.get(MDC_TRACE_ID) == null) {
-                MDC.put(MDC_TRACE_ID, correlationId);
-            }
-            if (request.getMethod() != null) {
-                MDC.put(MDC_HTTP_METHOD, request.getMethod());
-            }
-            if (request.getRequestURI() != null) {
-                MDC.put(MDC_HTTP_PATH, request.getRequestURI());
-            }
+        String correlationId = resolveCorrelationId(request);
+        String existingTraceId = MDC.get(MDC_TRACE_ID);
+        String resolvedTraceId = existingTraceId != null ? existingTraceId : correlationId;
+        String method = request.getMethod() != null ? request.getMethod() : "";
+        String path = request.getRequestURI() != null ? request.getRequestURI() : "";
+
+        try (var _ = MDC.putCloseable(MDC_CORRELATION_ID, correlationId);
+             var _ = MDC.putCloseable(MDC_TRACE_ID, resolvedTraceId);
+             var _ = MDC.putCloseable(MDC_HTTP_METHOD, method);
+             var _ = MDC.putCloseable(MDC_HTTP_PATH, path)) {
             response.setHeader(CORRELATION_ID_HEADER, correlationId);
             filterChain.doFilter(request, response);
-        } finally {
-            MDC.clear();
         }
     }
 

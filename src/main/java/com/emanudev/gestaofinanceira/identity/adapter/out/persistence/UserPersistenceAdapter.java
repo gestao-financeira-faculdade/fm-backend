@@ -2,8 +2,6 @@ package com.emanudev.gestaofinanceira.identity.adapter.out.persistence;
 
 import com.emanudev.gestaofinanceira.identity.application.port.out.UserRepositoryPort;
 import com.emanudev.gestaofinanceira.identity.domain.model.User;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -22,19 +20,19 @@ public class UserPersistenceAdapter implements UserRepositoryPort {
     }
 
     @Override
-    public Optional<User> findByEmail(@NotBlank String email) {
+    public Optional<User> findByEmail(String email) {
         return repository.findByEmailIgnoreCase(email.trim().toLowerCase(Locale.ROOT))
                 .map(UserJpaEntity::toDomain);
     }
 
     @Override
-    public Optional<User> findById(@NotNull UUID id) {
+    public Optional<User> findById(UUID id) {
         return repository.findById(id)
                 .map(UserJpaEntity::toDomain);
     }
 
     @Override
-    public User save(@NotNull User user) {
+    public User save(User user) {
         UserJpaEntity saved = repository.save(UserJpaEntity.fromDomain(user));
         return saved.toDomain();
     }

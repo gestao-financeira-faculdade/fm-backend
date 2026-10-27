@@ -1,7 +1,7 @@
 package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.reference.adapter.in.web.FinancialAccountController.CreateFinancialAccountRequest;
-import com.emanudev.gestaofinanceira.reference.adapter.in.web.FinancialAccountController.FinancialAccountResponse;
+import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CreateFinancialAccountRequest;
+import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.FinancialAccountResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;

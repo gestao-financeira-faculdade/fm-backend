@@ -1,7 +1,7 @@
 package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.reference.adapter.in.web.CategoryController.CategoryResponse;
-import com.emanudev.gestaofinanceira.reference.adapter.in.web.CategoryController.CreateCategoryRequest;
+import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CategoryResponse;
+import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CreateCategoryRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;

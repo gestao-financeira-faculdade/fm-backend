@@ -1,6 +1,6 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.AttachmentController.FiscalAttachmentResponse;
+import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.FiscalAttachmentResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;

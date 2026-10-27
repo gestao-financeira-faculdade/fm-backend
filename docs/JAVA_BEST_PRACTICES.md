@@ -278,7 +278,7 @@ dsl.selectFrom(ENTRIES)
 
 **Evite:** receber DTOs sem restrições e deixar falhar na camada de banco com `DataIntegrityViolationException` exposta ao cliente.
 
-**Prefira:** validar com `@Valid` + Jakarta Validation na entrada, reforçar invariantes nos objetos de domínio e traduzir falhas em `@RestControllerAdvice` (usando `ProblemDetail`, RFC 9457) ou `Status` adequado no gRPC, registrando detalhes técnicos apenas no log.
+**Prefira:** validar com `@Valid` + Jakarta Bean Validation na interface `*ControllerOpenApi` e nos `*Command`s da camada `application` (`@Validated`), reforçar invariantes nos objetos de domínio (construtores compactos e factory methods) e traduzir falhas em `@RestControllerAdvice` (usando `ProblemDetail`, RFC 9457) ou `Status` adequado no gRPC, registrando detalhes técnicos apenas no log. Respeite estritamente a especificação **Jakarta Bean Validation 3.0 (JSR-380 §4.5.5 — `HV000151`)**: em hierarquias de interface + classe (`*Controller implements *ControllerOpenApi`, `*Adapter implements *Port`), declare constraints de parâmetro (`@Valid`, `@NotNull`, `@NotBlank`) **exclusivamente na interface**, nunca nos métodos `@Override` da classe concreta.
 
 **Exceções:** chamadas internas entre métodos já validados dentro do mesmo limite transacional.
 
@@ -531,11 +531,11 @@ catch (InterruptedException e) {
 
 **Impacto:** quebra de contrato de API ao evoluir o banco de dados, dificuldade de reutilizar a mesma regra entre REST e gRPC, e testes lentos.
 
-**Prefira:** separar transporte (Controller REST / Serviço gRPC com DTOs), aplicação/domínio (`@Service` com regras de negócio e `@Transactional`) e persistência (Spring Data JPA / jOOQ). Refatore **apenas quando a tarefa já envolver a criação ou alteração desse fluxo**.
+**Prefira:** seguir estritamente a Arquitetura Hexagonal em todos os módulos (`adapter.in` -> `application` (`*UseCase` + `*Port`) -> `domain` / `adapter.out`), mantendo o domínio 100% livre de frameworks e isolando JPA/jOOQ nos adaptadores de saída.
 
-**Exceções:** endpoints puramente de leitura simples (consulta direta projetada em `record` DTO).
+**Exceções:** nenhuma.
 
-**Prioridade:** Média.
+**Prioridade:** Alta.
 
 **Fundamento:** Consenso técnico.
 

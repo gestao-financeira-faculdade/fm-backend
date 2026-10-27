@@ -69,7 +69,7 @@ class AuditLogControllerTest {
         when(queryAuditLogsUseCase.queryAuditLogs(any(AuditLogFilter.class), any(PageQuery.class)))
                 .thenReturn(PagedResult.of(List.of(item), 1L, 0, 10));
 
-        mockMvc.perform(get("/api/v1/audit-logs")
+        mockMvc.perform(get("/v1/audit-logs")
                         .param("entityType", "FINANCIAL_ENTRY")
                         .param("entityId", entryId.toString())
                         .param("action", "SETTLE")
@@ -133,7 +133,7 @@ class AuditLogControllerTest {
 
         when(queryAuditLogsUseCase.getEntryAuditHistory(entryId)).thenReturn(history);
 
-        mockMvc.perform(get("/api/v1/entries/{entryId}/audit-history", entryId))
+        mockMvc.perform(get("/v1/entries/{entryId}/audit-history", entryId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].id").value(log2.toString()))

@@ -2,7 +2,9 @@ package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 
 import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CreateFinancialAccountRequest;
 import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.FinancialAccountResponse;
-import com.emanudev.gestaofinanceira.reference.application.ReferenceDataService;
+import com.emanudev.gestaofinanceira.reference.application.usecase.CreateFinancialAccountUseCase;
+import com.emanudev.gestaofinanceira.reference.application.usecase.GetFinancialAccountUseCase;
+import com.emanudev.gestaofinanceira.reference.application.usecase.ListFinancialAccountsUseCase;
 import com.emanudev.gestaofinanceira.reference.domain.FinancialAccount;
 import com.emanudev.gestaofinanceira.shared.domain.Money;
 import java.math.BigDecimal;
@@ -16,15 +18,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class FinancialAccountController implements FinancialAccountControllerOpenApi {
 
-    private final ReferenceDataService referenceDataService;
+    private final CreateFinancialAccountUseCase createFinancialAccountUseCase;
+    private final ListFinancialAccountsUseCase listFinancialAccountsUseCase;
+    private final GetFinancialAccountUseCase getFinancialAccountUseCase;
 
-    public FinancialAccountController(ReferenceDataService referenceDataService) {
-        this.referenceDataService = referenceDataService;
+    public FinancialAccountController(
+            CreateFinancialAccountUseCase createFinancialAccountUseCase,
+            ListFinancialAccountsUseCase listFinancialAccountsUseCase,
+            GetFinancialAccountUseCase getFinancialAccountUseCase
+    ) {
+        this.createFinancialAccountUseCase = createFinancialAccountUseCase;
+        this.listFinancialAccountsUseCase = listFinancialAccountsUseCase;
+        this.getFinancialAccountUseCase = getFinancialAccountUseCase;
     }
 
     @Override
     public ResponseEntity<List<FinancialAccountResponse>> listAccounts() {
-        List<FinancialAccountResponse> accounts = referenceDataService.listAccounts().stream()
+        List<FinancialAccountResponse> accounts = listFinancialAccountsUseCase.execute().stream()
                 .map(FinancialAccountResponse::fromDomain)
                 .toList();
         return ResponseEntity.ok(accounts);
@@ -32,7 +42,7 @@ public class FinancialAccountController implements FinancialAccountControllerOpe
 
     @Override
     public ResponseEntity<FinancialAccountResponse> getAccount(UUID id) {
-        return ResponseEntity.ok(FinancialAccountResponse.fromDomain(referenceDataService.getAccountById(id)));
+        return ResponseEntity.ok(FinancialAccountResponse.fromDomain(getFinancialAccountUseCase.execute(id)));
     }
 
     @Override
@@ -41,7 +51,7 @@ public class FinancialAccountController implements FinancialAccountControllerOpe
                 .filter(c -> !c.isBlank())
                 .orElse(Money.DEFAULT_CURRENCY);
         BigDecimal balance = Optional.ofNullable(request.initialBalance()).orElse(BigDecimal.ZERO);
-        FinancialAccount created = referenceDataService.createAccount(
+        FinancialAccount created = createFinancialAccountUseCase.execute(
                 request.name(),
                 request.accountType(),
                 Money.of(balance, currency)

@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/counterparties")
+@RequestMapping("/v1/counterparties")
 public class CounterpartyController {
 
     private final ReferenceDataService referenceDataService;

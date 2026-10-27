@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping({"/api/v1/accounts", "/api/v1/financial-accounts"})
+@RequestMapping({"/v1/accounts", "/v1/financial-accounts"})
 public class FinancialAccountController {
 
     private final ReferenceDataService referenceDataService;

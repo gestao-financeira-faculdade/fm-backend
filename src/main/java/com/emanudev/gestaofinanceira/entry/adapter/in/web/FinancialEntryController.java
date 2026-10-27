@@ -38,7 +38,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/entries")
+@RequestMapping("/v1/entries")
 public class FinancialEntryController {
 
     private final FinancialEntryUseCaseService entryService;

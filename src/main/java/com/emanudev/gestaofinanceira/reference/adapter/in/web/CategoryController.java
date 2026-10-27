@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/categories")
+@RequestMapping("/v1/categories")
 public class CategoryController {
 
     private final ReferenceDataService referenceDataService;

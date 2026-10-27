@@ -4,27 +4,20 @@ import com.emanudev.gestaofinanceira.entry.application.FinancialEntryUseCaseServ
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntryUseCaseService.DownloadedAttachment;
 import com.emanudev.gestaofinanceira.entry.domain.FiscalAttachment;
 import com.emanudev.gestaofinanceira.entry.domain.InvalidAttachmentFormatException;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-
 @RestController
-@RequestMapping("/v1/entries/{id}/attachments")
-public class AttachmentController {
+public class AttachmentController implements AttachmentControllerOpenApi {
 
     private final FinancialEntryUseCaseService entryService;
 
@@ -32,11 +25,8 @@ public class AttachmentController {
         this.entryService = entryService;
     }
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<FiscalAttachmentResponse> uploadAttachment(
-            @PathVariable UUID id,
-            @RequestParam("file") MultipartFile file
-    ) {
+    @Override
+    public ResponseEntity<FiscalAttachmentResponse> uploadAttachment(UUID id, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new InvalidAttachmentFormatException("Multipart file must not be null or empty");
         }
@@ -52,19 +42,16 @@ public class AttachmentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(FiscalAttachmentResponse.fromDomain(saved));
     }
 
-    @GetMapping
-    public ResponseEntity<List<FiscalAttachmentResponse>> listAttachments(@PathVariable UUID id) {
+    @Override
+    public ResponseEntity<List<FiscalAttachmentResponse>> listAttachments(UUID id) {
         List<FiscalAttachmentResponse> attachments = entryService.listAttachments(id).stream()
                 .map(FiscalAttachmentResponse::fromDomain)
                 .toList();
         return ResponseEntity.ok(attachments);
     }
 
-    @GetMapping("/{attachmentId}/download")
-    public ResponseEntity<byte[]> downloadAttachment(
-            @PathVariable UUID id,
-            @PathVariable UUID attachmentId
-    ) {
+    @Override
+    public ResponseEntity<byte[]> downloadAttachment(UUID id, UUID attachmentId) {
         DownloadedAttachment downloaded = entryService.downloadAttachment(id, attachmentId);
         FiscalAttachment metadata = downloaded.attachment();
 

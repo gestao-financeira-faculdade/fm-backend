@@ -3,26 +3,18 @@ package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 import com.emanudev.gestaofinanceira.reference.application.ReferenceDataService;
 import com.emanudev.gestaofinanceira.reference.domain.Counterparty;
 import com.emanudev.gestaofinanceira.reference.domain.CounterpartyType;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1/counterparties")
-public class CounterpartyController {
+public class CounterpartyController implements CounterpartyControllerOpenApi {
 
     private final ReferenceDataService referenceDataService;
 
@@ -30,7 +22,7 @@ public class CounterpartyController {
         this.referenceDataService = referenceDataService;
     }
 
-    @GetMapping
+    @Override
     public ResponseEntity<List<CounterpartyResponse>> listCounterparties() {
         List<CounterpartyResponse> counterparties = referenceDataService.listCounterparties().stream()
                 .map(CounterpartyResponse::fromDomain)
@@ -38,15 +30,13 @@ public class CounterpartyController {
         return ResponseEntity.ok(counterparties);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<CounterpartyResponse> getCounterparty(@PathVariable UUID id) {
+    @Override
+    public ResponseEntity<CounterpartyResponse> getCounterparty(UUID id) {
         return ResponseEntity.ok(CounterpartyResponse.fromDomain(referenceDataService.getCounterpartyById(id)));
     }
 
-    @PostMapping
-    public ResponseEntity<CounterpartyResponse> createCounterparty(
-            @Valid @RequestBody CreateCounterpartyRequest request
-    ) {
+    @Override
+    public ResponseEntity<CounterpartyResponse> createCounterparty(CreateCounterpartyRequest request) {
         Counterparty created = referenceDataService.createCounterparty(
                 request.legalName(),
                 request.tradeName(),

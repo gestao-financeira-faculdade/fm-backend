@@ -14,32 +14,21 @@ import com.emanudev.gestaofinanceira.shared.application.PageQuery;
 import com.emanudev.gestaofinanceira.shared.application.PagedResult;
 import com.emanudev.gestaofinanceira.shared.domain.Money;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1/entries")
-public class FinancialEntryController {
+public class FinancialEntryController implements FinancialEntryControllerOpenApi {
 
     private final FinancialEntryUseCaseService entryService;
     private final Clock clock;
@@ -49,10 +38,10 @@ public class FinancialEntryController {
         this.clock = clock;
     }
 
-    @PostMapping
+    @Override
     public ResponseEntity<FinancialEntryResponse> createEntry(
-            @Valid @RequestBody CreateFinancialEntryRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader
+            CreateFinancialEntryRequest request,
+            String idempotencyKeyHeader
     ) {
         String idempotencyKey = (request.idempotencyKey() != null && !request.idempotencyKey().isBlank())
                 ? request.idempotencyKey()
@@ -81,17 +70,17 @@ public class FinancialEntryController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created));
     }
 
-    @GetMapping
+    @Override
     public ResponseEntity<PagedResult<FinancialEntrySummaryView>> listEntries(
-            @RequestParam(required = false) EntryType entryType,
-            @RequestParam(required = false) EntryStatus status,
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) UUID accountId,
-            @RequestParam(required = false) LocalDate dueDateFrom,
-            @RequestParam(required = false) LocalDate dueDateTo,
-            @RequestParam(required = false) String search,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            EntryType entryType,
+            EntryStatus status,
+            UUID categoryId,
+            UUID accountId,
+            LocalDate dueDateFrom,
+            LocalDate dueDateTo,
+            String search,
+            int page,
+            int size
     ) {
         FinancialEntryFilter filter = new FinancialEntryFilter(
                 entryType,
@@ -106,16 +95,16 @@ public class FinancialEntryController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<FinancialEntryResponse> getEntry(@PathVariable UUID id) {
+    @Override
+    public ResponseEntity<FinancialEntryResponse> getEntry(UUID id) {
         FinancialEntry entry = entryService.getEntryById(id);
         return ResponseEntity.ok(toResponse(entry));
     }
 
-    @PostMapping("/{id}/settle")
+    @Override
     public ResponseEntity<SettlementResponse> settleEntry(
-            @PathVariable UUID id,
-            @RequestBody(required = false) SettleFinancialEntryRequest request
+            UUID id,
+            SettleFinancialEntryRequest request
     ) {
         FinancialEntry current = entryService.getEntryById(id);
         String currency = current.originalAmount().currency();
@@ -158,30 +147,30 @@ public class FinancialEntryController {
         return ResponseEntity.ok(SettlementResponse.from(settledResp, residualResp));
     }
 
-    @PostMapping("/{id}/cancel")
+    @Override
     public ResponseEntity<FinancialEntryResponse> cancelEntry(
-            @PathVariable UUID id,
-            @RequestBody(required = false) CancelFinancialEntryRequest request,
-            @RequestParam(required = false) String reason
+            UUID id,
+            CancelFinancialEntryRequest request,
+            String reason
     ) {
         String resolvedReason = resolveCancellationReason(request, reason);
         FinancialEntry cancelled = entryService.cancelEntry(id, resolvedReason);
         return ResponseEntity.ok(toResponse(cancelled));
     }
 
-    @DeleteMapping("/{id}")
+    @Override
     public ResponseEntity<FinancialEntryResponse> deleteEntryLogically(
-            @PathVariable UUID id,
-            @RequestBody(required = false) CancelFinancialEntryRequest request,
-            @RequestParam(required = false) String reason
+            UUID id,
+            CancelFinancialEntryRequest request,
+            String reason
     ) {
         String resolvedReason = resolveCancellationReason(request, reason);
         FinancialEntry cancelled = entryService.cancelEntry(id, resolvedReason);
         return ResponseEntity.ok(toResponse(cancelled));
     }
 
-    @GetMapping("/{id}/splits")
-    public ResponseEntity<List<FinancialEntryLineageNode>> getEntrySplits(@PathVariable UUID id) {
+    @Override
+    public ResponseEntity<List<FinancialEntryLineageNode>> getEntrySplits(UUID id) {
         return ResponseEntity.ok(entryService.getEntryLineage(id));
     }
 

@@ -3,26 +3,18 @@ package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 import com.emanudev.gestaofinanceira.reference.application.ReferenceDataService;
 import com.emanudev.gestaofinanceira.reference.domain.Category;
 import com.emanudev.gestaofinanceira.reference.domain.CategoryType;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1/categories")
-public class CategoryController {
+public class CategoryController implements CategoryControllerOpenApi {
 
     private final ReferenceDataService referenceDataService;
 
@@ -30,7 +22,7 @@ public class CategoryController {
         this.referenceDataService = referenceDataService;
     }
 
-    @GetMapping
+    @Override
     public ResponseEntity<List<CategoryResponse>> listCategories() {
         List<CategoryResponse> categories = referenceDataService.listCategories().stream()
                 .map(CategoryResponse::fromDomain)
@@ -38,15 +30,13 @@ public class CategoryController {
         return ResponseEntity.ok(categories);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<CategoryResponse> getCategory(@PathVariable UUID id) {
+    @Override
+    public ResponseEntity<CategoryResponse> getCategory(UUID id) {
         return ResponseEntity.ok(CategoryResponse.fromDomain(referenceDataService.getCategoryById(id)));
     }
 
-    @PostMapping
-    public ResponseEntity<CategoryResponse> createCategory(
-            @Valid @RequestBody CreateCategoryRequest request
-    ) {
+    @Override
+    public ResponseEntity<CategoryResponse> createCategory(CreateCategoryRequest request) {
         Category created = referenceDataService.createCategory(
                 request.name(),
                 request.categoryType(),

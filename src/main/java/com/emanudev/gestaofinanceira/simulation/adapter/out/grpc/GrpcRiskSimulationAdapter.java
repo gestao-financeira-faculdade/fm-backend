@@ -25,9 +25,9 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -40,26 +40,31 @@ import java.util.stream.IntStream;
 public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
 
     private static final Logger log = LoggerFactory.getLogger(GrpcRiskSimulationAdapter.class);
-    public static final int DEFAULT_MAX_CONCURRENT_SIMULATIONS = 4;
-    private static final long DEFAULT_DEADLINE_MS = 5_000L;
 
     private final Semaphore concurrencyLimiter;
+    private final int maxConcurrentSimulations;
     private final boolean grpcEnabled;
     private final boolean fallbackOnUnavailable;
     private final long deadlineMs;
     private final ManagedChannel managedChannel;
     private final RiskSimulationServiceGrpc.RiskSimulationServiceBlockingStub blockingStub;
+    private final Clock clock;
 
     @Autowired
-    public GrpcRiskSimulationAdapter(ApplicationProperties applicationProperties) {
+    public GrpcRiskSimulationAdapter(ApplicationProperties applicationProperties, Clock clock) {
         this(
                 applicationProperties.getSimulationGrpcHost(),
                 applicationProperties.getSimulationGrpcPort(),
                 applicationProperties.isSimulationGrpcEnabled(),
                 applicationProperties.isSimulationGrpcFallbackEnabled(),
                 applicationProperties.getSimulationGrpcDeadlineMs(),
-                applicationProperties.getSimulationMaxConcurrent()
+                applicationProperties.getSimulationMaxConcurrent(),
+                clock
         );
+    }
+
+    public GrpcRiskSimulationAdapter(ApplicationProperties applicationProperties) {
+        this(applicationProperties, Clock.systemUTC());
     }
 
     public GrpcRiskSimulationAdapter(
@@ -70,19 +75,26 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
             long deadlineMs,
             int maxConcurrentSimulations
     ) {
-        this.concurrencyLimiter = new Semaphore(Math.max(1, maxConcurrentSimulations), true);
+        this(host, port, grpcEnabled, fallbackOnUnavailable, deadlineMs, maxConcurrentSimulations, Clock.systemUTC());
+    }
+
+    public GrpcRiskSimulationAdapter(
+            String host,
+            int port,
+            boolean grpcEnabled,
+            boolean fallbackOnUnavailable,
+            long deadlineMs,
+            int maxConcurrentSimulations,
+            Clock clock
+    ) {
+        this.maxConcurrentSimulations = Math.max(1, maxConcurrentSimulations);
+        this.concurrencyLimiter = new Semaphore(this.maxConcurrentSimulations, true);
         this.grpcEnabled = grpcEnabled;
         this.fallbackOnUnavailable = fallbackOnUnavailable;
-        this.deadlineMs = deadlineMs > 0 ? deadlineMs : DEFAULT_DEADLINE_MS;
-        if (grpcEnabled) {
-            this.managedChannel = ManagedChannelBuilder.forAddress(host, port)
-                    .usePlaintext()
-                    .build();
-            this.blockingStub = RiskSimulationServiceGrpc.newBlockingStub(this.managedChannel);
-        } else {
-            this.managedChannel = null;
-            this.blockingStub = null;
-        }
+        this.deadlineMs = deadlineMs > 0 ? deadlineMs : 5_000L;
+        this.clock = clock != null ? clock : Clock.systemUTC();
+        this.managedChannel = createManagedChannel(host, port, grpcEnabled);
+        this.blockingStub = createBlockingStub(this.managedChannel);
     }
 
     public GrpcRiskSimulationAdapter(
@@ -91,23 +103,44 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
             long deadlineMs,
             boolean fallbackOnUnavailable
     ) {
-        this.concurrencyLimiter = new Semaphore(Math.max(1, maxConcurrentSimulations), true);
+        this.maxConcurrentSimulations = Math.max(1, maxConcurrentSimulations);
+        this.concurrencyLimiter = new Semaphore(this.maxConcurrentSimulations, true);
         this.grpcEnabled = true;
         this.fallbackOnUnavailable = fallbackOnUnavailable;
-        this.deadlineMs = deadlineMs > 0 ? deadlineMs : DEFAULT_DEADLINE_MS;
+        this.deadlineMs = deadlineMs > 0 ? deadlineMs : 5_000L;
+        this.clock = Clock.systemUTC();
         this.managedChannel = null;
         this.blockingStub = blockingStub;
     }
 
     public GrpcRiskSimulationAdapter() {
-        this("localhost", 50051, false, true, DEFAULT_DEADLINE_MS, DEFAULT_MAX_CONCURRENT_SIMULATIONS);
+        this("localhost", 50051, false, true, 5_000L, 4, Clock.systemUTC());
+    }
+
+    private static ManagedChannel createManagedChannel(String host, int port, boolean enabled) {
+        if (!enabled) {
+            return null;
+        }
+        return ManagedChannelBuilder.forAddress(host, port)
+                .usePlaintext()
+                .build();
+    }
+
+    private static RiskSimulationServiceGrpc.RiskSimulationServiceBlockingStub createBlockingStub(
+            ManagedChannel channel
+    ) {
+        if (channel == null) {
+            return null;
+        }
+        return RiskSimulationServiceGrpc.newBlockingStub(channel);
     }
 
     @PreDestroy
     public void shutdown() {
-        if (managedChannel != null && !managedChannel.isShutdown()) {
-            managedChannel.shutdown();
+        if (managedChannel == null || managedChannel.isShutdown()) {
+            return;
         }
+        managedChannel.shutdown();
     }
 
     @Override
@@ -119,35 +152,36 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
             StressScenarioParams params,
             List<ScheduledDailyCashFlow> scheduledItems
     ) {
-        boolean acquired = false;
+        acquireSimulationSlot();
         try {
-            acquired = concurrencyLimiter.tryAcquire(deadlineMs, TimeUnit.MILLISECONDS);
-            if (!acquired) {
-                throw new RiskEngineUnavailableException(
-                        "Maximum concurrent risk simulations reached (" + DEFAULT_MAX_CONCURRENT_SIMULATIONS + "). Try again shortly."
-                );
-            }
-
             long resolvedSeed = params.resolvedSeed();
             RiskSimulationRequest request = buildProtobufRequest(initialBalance, params, resolvedSeed, scheduledItems);
             RiskSimulationResponse response = executeProtobufSimulation(request);
-
             return mapProtobufResponseToDomain(
                     simulationId != null ? simulationId : UUID.randomUUID(),
                     requestedBy,
                     initialBalance,
-                    referenceDate != null ? referenceDate : LocalDate.now(),
+                    referenceDate != null ? referenceDate : LocalDate.now(clock),
                     params,
                     resolvedSeed,
                     response
             );
+        } finally {
+            concurrencyLimiter.release();
+        }
+    }
+
+    private void acquireSimulationSlot() {
+        try {
+            boolean acquired = concurrencyLimiter.tryAcquire(deadlineMs, TimeUnit.MILLISECONDS);
+            if (!acquired) {
+                throw new RiskEngineUnavailableException(
+                        "Maximum concurrent risk simulations reached (" + maxConcurrentSimulations + "). Try again shortly."
+                );
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RiskEngineUnavailableException("Interrupted while waiting for HPC simulation slot", e);
-        } finally {
-            if (acquired) {
-                concurrencyLimiter.release();
-            }
         }
     }
 
@@ -158,45 +192,55 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
             List<ScheduledDailyCashFlow> scheduledItems
     ) {
         RiskSimulationRequest.Builder builder = RiskSimulationRequest.newBuilder()
-                .setInitialBalanceCents(initialBalance.toCents())
                 .setHorizonDays(params.horizonDays())
                 .setNumScenarios(params.numScenarios())
+                .setInitialBalanceCents(initialBalance.toCents())
                 .setExpectedDefaultRate(params.expectedDefaultRate().toFraction().doubleValue())
                 .setVariableCostShockPct(params.variableCostShockPct().toFraction().doubleValue())
                 .setRandomSeed(resolvedSeed);
 
-        if (scheduledItems != null) {
-            for (ScheduledDailyCashFlow item : scheduledItems) {
-                builder.addScheduledItems(
-                        ScheduledCashFlowItem.newBuilder()
-                                .setDayOffset(item.dayOffset())
-                                .setPayableFixedCents(item.payableFixed().toCents())
-                                .setPayableVariableCents(item.payableVariable().toCents())
-                                .setReceivableCents(item.receivable().toCents())
-                                .build()
-                );
-            }
+        if (scheduledItems == null) {
+            return builder.build();
         }
+        scheduledItems.stream()
+                .map(this::toProtoScheduledItem)
+                .forEach(builder::addScheduledItems);
         return builder.build();
     }
 
+    private ScheduledCashFlowItem toProtoScheduledItem(ScheduledDailyCashFlow item) {
+        return ScheduledCashFlowItem.newBuilder()
+                .setDayOffset(item.dayOffset())
+                .setPayableFixedCents(item.payableFixed().toCents())
+                .setPayableVariableCents(item.payableVariable().toCents())
+                .setReceivableCents(item.receivable().toCents())
+                .build();
+    }
+
     RiskSimulationResponse executeProtobufSimulation(RiskSimulationRequest request) {
-        if (grpcEnabled && blockingStub != null) {
-            try {
-                return blockingStub
-                        .withDeadlineAfter(deadlineMs, TimeUnit.MILLISECONDS)
-                        .simulateCashFlowRisk(request);
-            } catch (StatusRuntimeException ex) {
-                if (fallbackOnUnavailable) {
-                    log.warn("gRPC HPC engine unreachable ({}); falling back to deterministic CPU simulation", ex.getStatus());
-                    return simulateDeterministicCpu(request);
-                }
-                throw new RiskEngineUnavailableException(
-                        "HPC Risk Simulation Engine failed with gRPC status: " + ex.getStatus(),
-                        ex
-                );
-            }
+        if (!grpcEnabled || blockingStub == null) {
+            return simulateDeterministicCpu(request);
         }
+        try {
+            return blockingStub
+                    .withDeadlineAfter(deadlineMs, TimeUnit.MILLISECONDS)
+                    .simulateCashFlowRisk(request);
+        } catch (StatusRuntimeException ex) {
+            return handleGrpcFailure(request, ex);
+        }
+    }
+
+    private RiskSimulationResponse handleGrpcFailure(RiskSimulationRequest request, StatusRuntimeException ex) {
+        if (!fallbackOnUnavailable) {
+            throw new RiskEngineUnavailableException(
+                    "HPC Risk Simulation Engine failed with gRPC status: " + ex.getStatus(),
+                    ex
+            );
+        }
+        log.atWarn()
+                .addKeyValue("event.action", "simulation.grpc.fallback")
+                .addKeyValue("grpc_status", ex.getStatus().getCode().name())
+                .log("gRPC HPC engine unreachable; falling back to deterministic CPU simulation");
         return simulateDeterministicCpu(request);
     }
 
@@ -206,14 +250,14 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
      */
     public RiskSimulationResponse simulateDeterministicCpu(RiskSimulationRequest request) {
         long startNanos = System.nanoTime();
+        DailyCashFlowSchedule schedule = buildDailySchedule(request);
+        SimulationMatrix matrix = runMonteCarloScenarios(request, schedule);
+        DailyProjectionBand[] bands = computeDailyPercentileBands(matrix.balancesByDay(), request.getHorizonDays());
+        return buildCpuSimulationResponse(bands, matrix.ruinedScenarios(), request.getNumScenarios(), startNanos);
+    }
 
+    private DailyCashFlowSchedule buildDailySchedule(RiskSimulationRequest request) {
         int horizon = request.getHorizonDays();
-        int numScenarios = request.getNumScenarios();
-        long initialBalanceCents = request.getInitialBalanceCents();
-        double defaultRate = normalizeFraction(request.getExpectedDefaultRate());
-        double costShock = normalizeFraction(request.getVariableCostShockPct());
-        long baseSeed = request.getRandomSeed() != 0L ? request.getRandomSeed() : 42L;
-
         long[] fixedPayable = new long[horizon];
         long[] varPayable = new long[horizon];
         long[] receivable = new long[horizon];
@@ -226,82 +270,112 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
                 receivable[idx] += item.getReceivableCents();
             }
         }
+        return new DailyCashFlowSchedule(fixedPayable, varPayable, receivable);
+    }
+
+    private SimulationMatrix runMonteCarloScenarios(RiskSimulationRequest request, DailyCashFlowSchedule schedule) {
+        int horizon = request.getHorizonDays();
+        int numScenarios = request.getNumScenarios();
+        long baseSeed = request.getRandomSeed() != 0L ? request.getRandomSeed() : 42L;
+        double defaultRate = normalizeFraction(request.getExpectedDefaultRate());
+        double costShock = normalizeFraction(request.getVariableCostShockPct());
 
         long[][] balancesByDay = new long[horizon][numScenarios];
         AtomicInteger ruinedScenarios = new AtomicInteger(0);
 
         IntStream.range(0, numScenarios).parallel().forEach(scenario -> {
-            long state = mix64(baseSeed + ((long) scenario + 1L) * 0x9E3779B97F4A7C15L);
-            if (state == 0L) {
-                state = 0xCAFEBABE12345678L;
-            }
-
-            long currentBalance = initialBalanceCents;
-            boolean ruined = currentBalance < 0L;
-
-            for (int day = 0; day < horizon; day++) {
-                long rec = receivable[day];
-                long realizedRec = rec;
-                if (rec > 0L && defaultRate > 0.0) {
-                    state = xorshift64Star(state);
-                    double uDefault = toUnitDouble(state);
-                    if (uDefault < defaultRate) {
-                        realizedRec = 0L;
-                    }
-                }
-
-                long varPay = varPayable[day];
-                long realizedVarPay = varPay;
-                if (varPay > 0L && costShock > 0.0) {
-                    state = xorshift64Star(state);
-                    double u1 = toUnitDouble(state);
-                    state = xorshift64Star(state);
-                    double u2 = toUnitDouble(state);
-                    // Symmetric triangular shock in [-1, 1] + upward stress drift (0.25)
-                    double shockMultiplier = 1.0 + costShock * ((u1 + u2 - 1.0) + 0.25);
-                    if (shockMultiplier < 0.0) {
-                        shockMultiplier = 0.0;
-                    }
-                    realizedVarPay = Math.round(varPay * shockMultiplier);
-                }
-
-                currentBalance = currentBalance + realizedRec - fixedPayable[day] - realizedVarPay;
-                if (currentBalance < 0L) {
-                    ruined = true;
-                }
-                balancesByDay[day][scenario] = currentBalance;
-            }
-
+            boolean ruined = simulateSingleScenario(
+                    scenario, baseSeed, request.getInitialBalanceCents(),
+                    defaultRate, costShock, schedule, balancesByDay
+            );
             if (ruined) {
                 ruinedScenarios.incrementAndGet();
             }
         });
+        return new SimulationMatrix(balancesByDay, ruinedScenarios.get());
+    }
 
+    private boolean simulateSingleScenario(
+            int scenario,
+            long baseSeed,
+            long initialBalanceCents,
+            double defaultRate,
+            double costShock,
+            DailyCashFlowSchedule schedule,
+            long[][] balancesByDay
+    ) {
+        long state = initializePrngState(baseSeed, scenario);
+        long currentBalance = initialBalanceCents;
+        boolean ruined = currentBalance < 0L;
+
+        for (int day = 0; day < balancesByDay.length; day++) {
+            PrngStep receivableStep = sampleRealizedReceivable(schedule.receivable()[day], defaultRate, state);
+            state = receivableStep.nextState();
+            PrngStep variablePayStep = sampleRealizedVariablePayable(schedule.varPayable()[day], costShock, state);
+            state = variablePayStep.nextState();
+
+            currentBalance += receivableStep.amountCents() - schedule.fixedPayable()[day] - variablePayStep.amountCents();
+            ruined = ruined || currentBalance < 0L;
+            balancesByDay[day][scenario] = currentBalance;
+        }
+        return ruined;
+    }
+
+    private static long initializePrngState(long baseSeed, int scenario) {
+        long state = mix64(baseSeed + ((long) scenario + 1L) * 0x9E3779B97F4A7C15L);
+        return state != 0L ? state : 0xCAFEBABE12345678L;
+    }
+
+    private static PrngStep sampleRealizedReceivable(long receivableCents, double defaultRate, long state) {
+        if (receivableCents <= 0L || defaultRate <= 0.0) {
+            return new PrngStep(receivableCents, state);
+        }
+        long nextState = xorshift64Star(state);
+        long realized = toUnitDouble(nextState) < defaultRate ? 0L : receivableCents;
+        return new PrngStep(realized, nextState);
+    }
+
+    private static PrngStep sampleRealizedVariablePayable(long varPayableCents, double costShock, long state) {
+        if (varPayableCents <= 0L || costShock <= 0.0) {
+            return new PrngStep(varPayableCents, state);
+        }
+        long state1 = xorshift64Star(state);
+        double u1 = toUnitDouble(state1);
+        long state2 = xorshift64Star(state1);
+        double u2 = toUnitDouble(state2);
+        double shockMultiplier = Math.max(0.0, 1.0 + costShock * ((u1 + u2 - 1.0) + 0.25));
+        return new PrngStep(Math.round(varPayableCents * shockMultiplier), state2);
+    }
+
+    private DailyProjectionBand[] computeDailyPercentileBands(long[][] balancesByDay, int horizon) {
         DailyProjectionBand[] bands = new DailyProjectionBand[horizon];
-        IntStream.range(0, horizon).parallel().forEach(day -> {
-            long[] dayBalances = balancesByDay[day];
-            Arrays.sort(dayBalances);
+        IntStream.range(0, horizon).parallel().forEach(day ->
+                bands[day] = buildDailyProjectionBand(day, balancesByDay[day])
+        );
+        return bands;
+    }
 
-            long p01 = percentileSorted(dayBalances, 0.01);
-            long p05 = percentileSorted(dayBalances, 0.05);
-            long p25 = percentileSorted(dayBalances, 0.25);
-            long p50 = percentileSorted(dayBalances, 0.50);
-            long p75 = percentileSorted(dayBalances, 0.75);
-            long p95 = percentileSorted(dayBalances, 0.95);
+    private DailyProjectionBand buildDailyProjectionBand(int day, long[] dayBalances) {
+        Arrays.sort(dayBalances);
+        return DailyProjectionBand.newBuilder()
+                .setDayOffset(day + 1)
+                .setP01Cents(percentileSorted(dayBalances, 0.01))
+                .setP05Cents(percentileSorted(dayBalances, 0.05))
+                .setP25Cents(percentileSorted(dayBalances, 0.25))
+                .setP50Cents(percentileSorted(dayBalances, 0.50))
+                .setP75Cents(percentileSorted(dayBalances, 0.75))
+                .setP95Cents(percentileSorted(dayBalances, 0.95))
+                .build();
+    }
 
-            bands[day] = DailyProjectionBand.newBuilder()
-                    .setDayOffset(day + 1)
-                    .setP01Cents(p01)
-                    .setP05Cents(p05)
-                    .setP25Cents(p25)
-                    .setP50Cents(p50)
-                    .setP75Cents(p75)
-                    .setP95Cents(p95)
-                    .build();
-        });
-
-        DailyProjectionBand terminalBand = bands[horizon - 1];
-        double ruinProbabilityPct = (ruinedScenarios.get() * 100.0) / numScenarios;
+    private RiskSimulationResponse buildCpuSimulationResponse(
+            DailyProjectionBand[] bands,
+            int ruinedScenarios,
+            int numScenarios,
+            long startNanos
+    ) {
+        DailyProjectionBand terminalBand = bands[bands.length - 1];
+        double ruinProbabilityPct = (ruinedScenarios * 100.0) / numScenarios;
         long elapsedMs = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos));
 
         return RiskSimulationResponse.newBuilder()
@@ -323,43 +397,41 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
             long resolvedSeed,
             RiskSimulationResponse response
     ) {
-        List<DailyPercentileBand> domainBands = new ArrayList<>(response.getDailyBandsCount());
-        for (DailyProjectionBand protoBand : response.getDailyBandsList()) {
-            int offset = protoBand.getDayOffset();
-            domainBands.add(new DailyPercentileBand(
-                    offset,
-                    referenceDate.plusDays(offset),
-                    Money.ofCentsBrl(protoBand.getP01Cents()),
-                    Money.ofCentsBrl(protoBand.getP05Cents()),
-                    Money.ofCentsBrl(protoBand.getP25Cents()),
-                    Money.ofCentsBrl(protoBand.getP50Cents()),
-                    Money.ofCentsBrl(protoBand.getP75Cents()),
-                    Money.ofCentsBrl(protoBand.getP95Cents())
-            ));
-        }
+        List<DailyPercentileBand> domainBands = response.getDailyBandsList().stream()
+                .map(protoBand -> toDomainPercentileBand(referenceDate, protoBand))
+                .toList();
 
-        BigDecimal clampedRuinPct = BigDecimal.valueOf(response.getRuinProbabilityPct())
+        return new RiskSimulationResult(
+                simulationId, requestedBy, params.horizonDays(), params.numScenarios(),
+                initialBalance, params.expectedDefaultRate(), params.variableCostShockPct(),
+                resolvedSeed, Money.ofCentsBrl(response.getVar99Cents()),
+                Money.ofCentsBrl(response.getMedianP50Cents()),
+                clampRuinPercentage(response.getRuinProbabilityPct()),
+                domainBands, response.getExecutionDevice(),
+                response.getExecutionTimeMs(), Instant.now(clock)
+        );
+    }
+
+    private DailyPercentileBand toDomainPercentileBand(LocalDate referenceDate, DailyProjectionBand protoBand) {
+        int offset = protoBand.getDayOffset();
+        return new DailyPercentileBand(
+                offset,
+                referenceDate.plusDays(offset),
+                Money.ofCentsBrl(protoBand.getP01Cents()),
+                Money.ofCentsBrl(protoBand.getP05Cents()),
+                Money.ofCentsBrl(protoBand.getP25Cents()),
+                Money.ofCentsBrl(protoBand.getP50Cents()),
+                Money.ofCentsBrl(protoBand.getP75Cents()),
+                Money.ofCentsBrl(protoBand.getP95Cents())
+        );
+    }
+
+    private static Percentage clampRuinPercentage(double rawRuinPct) {
+        BigDecimal clamped = BigDecimal.valueOf(rawRuinPct)
                 .max(BigDecimal.ZERO)
                 .min(BigDecimal.valueOf(100))
                 .setScale(4, RoundingMode.HALF_EVEN);
-
-        return new RiskSimulationResult(
-                simulationId,
-                requestedBy,
-                params.horizonDays(),
-                params.numScenarios(),
-                initialBalance,
-                params.expectedDefaultRate(),
-                params.variableCostShockPct(),
-                resolvedSeed,
-                Money.ofCentsBrl(response.getVar99Cents()),
-                Money.ofCentsBrl(response.getMedianP50Cents()),
-                Percentage.of(clampedRuinPct),
-                domainBands,
-                response.getExecutionDevice(),
-                response.getExecutionTimeMs(),
-                Instant.now()
-        );
+        return Percentage.of(clamped);
     }
 
     private static double normalizeFraction(double raw) {
@@ -374,8 +446,7 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
             return 0L;
         }
         int idx = (int) Math.floor(quantile * (sorted.length - 1));
-        idx = Math.max(0, Math.min(sorted.length - 1, idx));
-        return sorted[idx];
+        return sorted[Math.max(0, Math.min(sorted.length - 1, idx))];
     }
 
     private static long mix64(long z) {
@@ -393,5 +464,14 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
 
     private static double toUnitDouble(long bits) {
         return ((bits >>> 11) * 0x1.0p-53);
+    }
+
+    private record DailyCashFlowSchedule(long[] fixedPayable, long[] varPayable, long[] receivable) {
+    }
+
+    private record SimulationMatrix(long[][] balancesByDay, int ruinedScenarios) {
+    }
+
+    private record PrngStep(long amountCents, long nextState) {
     }
 }

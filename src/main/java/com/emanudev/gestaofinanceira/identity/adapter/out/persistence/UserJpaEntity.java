@@ -122,4 +122,16 @@ public class UserJpaEntity {
     public Instant getUpdatedAt() {
         return updatedAt;
     }
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof UserJpaEntity other)) return false;
+        return id != null && id.equals(other.id);
+    }
+
+    @Override
+    public final int hashCode() {
+        return getClass().hashCode();
+    }
 }

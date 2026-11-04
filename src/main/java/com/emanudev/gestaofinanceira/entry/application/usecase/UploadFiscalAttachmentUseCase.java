@@ -31,7 +31,6 @@ public class UploadFiscalAttachmentUseCase {
     private final ActorContextPort actorContextPort;
     private final Clock clock;
 
-    @Autowired
     public UploadFiscalAttachmentUseCase(
             FinancialEntryRepositoryPort entryRepository,
             FiscalAttachmentRepositoryPort attachmentRepository,
@@ -50,6 +49,7 @@ public class UploadFiscalAttachmentUseCase {
         this.clock = clock;
     }
 
+    @Autowired
     public UploadFiscalAttachmentUseCase(
             FinancialEntryRepositoryPort entryRepository,
             FiscalAttachmentRepositoryPort attachmentRepository,

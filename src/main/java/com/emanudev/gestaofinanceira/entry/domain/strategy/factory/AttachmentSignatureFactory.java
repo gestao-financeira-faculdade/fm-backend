@@ -5,20 +5,16 @@ import com.emanudev.gestaofinanceira.entry.domain.strategy.AttachmentSignatureSt
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.JpegSignatureStrategy;
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.PdfSignatureStrategy;
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.PngSignatureStrategy;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-@Component
 public class AttachmentSignatureFactory {
 
     private final Map<String, AttachmentSignatureStrategy> strategies = new LinkedHashMap<>();
 
-    @Autowired
     public AttachmentSignatureFactory(Set<AttachmentSignatureStrategy> strategySet) {
         strategySet.forEach(s -> strategies.put(s.getMimeType(), s));
     }

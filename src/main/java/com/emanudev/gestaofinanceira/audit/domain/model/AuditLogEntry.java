@@ -1,6 +1,5 @@
 package com.emanudev.gestaofinanceira.audit.domain.model;
 
-import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 
 import java.time.Instant;
@@ -46,34 +45,6 @@ public record AuditLogEntry(
             String entityType,
             UUID entityId,
             AuditAction action,
-            ActorContext actor,
-            String correlationId,
-            String previousState,
-            String newState,
-            Instant occurredAt
-    ) {
-        Objects.requireNonNull(actor, "actor must not be null");
-        return new AuditLogEntry(
-                UUID.randomUUID(),
-                entityType,
-                entityId,
-                action,
-                actor.userId(),
-                actor.userName() != null && !actor.userName().isBlank() ? actor.userName() : "SYSTEM",
-                actor.role() != null && !actor.role().isBlank() ? actor.role() : "SYSTEM",
-                actor.actorType() != null && !actor.actorType().isBlank() ? actor.actorType() : "SYSTEM",
-                actor.ipAddress(),
-                correlationId,
-                previousState,
-                newState,
-                occurredAt
-        );
-    }
-
-    public static AuditLogEntry create(
-            String entityType,
-            UUID entityId,
-            AuditAction action,
             UUID actorUserId,
             String actorName,
             String actorRole,
@@ -90,9 +61,9 @@ public record AuditLogEntry(
                 entityId,
                 action,
                 actorUserId,
-                actorName,
-                actorRole,
-                actorType,
+                actorName != null && !actorName.isBlank() ? actorName : "SYSTEM",
+                actorRole != null && !actorRole.isBlank() ? actorRole : "SYSTEM",
+                actorType != null && !actorType.isBlank() ? actorType : "SYSTEM",
                 ipAddress,
                 correlationId,
                 previousState,

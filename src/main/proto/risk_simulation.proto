@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package com.emanudev.gestaofinanceira.simulation.grpc;
+
+option java_multiple_files = true;
+option java_package = "com.emanudev.gestaofinanceira.simulation.adapter.out.grpc.proto";
+option java_outer_classname = "RiskSimulationProto";
+
+service RiskSimulationService {
+  rpc SimulateCashFlowRisk (RiskSimulationRequest) returns (RiskSimulationResponse);
+}
+
+message RiskSimulationRequest {
+  sint64 initial_balance_cents = 1;
+  int32 horizon_days = 2;
+  int32 num_scenarios = 3;
+  double expected_default_rate = 4;
+  double variable_cost_shock_pct = 5;
+  uint64 random_seed = 6;
+  repeated ScheduledCashFlowItem scheduled_items = 7;
+}
+
+message ScheduledCashFlowItem {
+  int32 day_offset = 1;
+  sint64 payable_fixed_cents = 2;
+  sint64 payable_variable_cents = 3;
+  sint64 receivable_cents = 4;
+}
+
+message RiskSimulationResponse {
+  sint64 var_99_cents = 1;
+  sint64 median_p50_cents = 2;
+  double ruin_probability_pct = 3;
+  string execution_device = 4;
+  int64 execution_time_ms = 5;
+  repeated DailyProjectionBand daily_bands = 6;
+}
+
+message DailyProjectionBand {
+  int32 day_offset = 1;
+  sint64 p01_cents = 2;
+  sint64 p05_cents = 3;
+  sint64 p25_cents = 4;
+  sint64 p50_cents = 5;
+  sint64 p75_cents = 6;
+  sint64 p95_cents = 7;
+}

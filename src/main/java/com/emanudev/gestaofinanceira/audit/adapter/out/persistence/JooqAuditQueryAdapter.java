@@ -2,7 +2,7 @@ package com.emanudev.gestaofinanceira.audit.adapter.out.persistence;
 
 import com.emanudev.gestaofinanceira.audit.application.port.in.AuditLogFilter;
 import com.emanudev.gestaofinanceira.audit.application.port.in.AuditLogItemResponse;
-import com.emanudev.gestaofinanceira.audit.application.port.in.QueryAuditLogsUseCase;
+import com.emanudev.gestaofinanceira.audit.application.port.out.AuditLogQueryPort;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 import com.emanudev.gestaofinanceira.shared.application.PageQuery;
 import com.emanudev.gestaofinanceira.shared.application.PagedResult;
@@ -27,7 +27,7 @@ import java.util.UUID;
 
 @Component
 @Transactional(readOnly = true)
-public class JooqAuditQueryAdapter implements QueryAuditLogsUseCase {
+public class JooqAuditQueryAdapter implements AuditLogQueryPort {
 
     private static final Table<Record> T_AUDIT_LOGS = DSL.table(DSL.name("audit_logs"));
 

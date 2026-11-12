@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(ENABLE_OPENCL "Enable OpenCL GPU/CPU kernel acceleration" OFF)
 option(BUILD_GRPC_SERVER "Build gRPC server binary (requires Protobuf and gRPC)" ON)
 option(BUILD_TESTING "Build C++20 unit tests for simulation engine" ON)
+option(BUILD_BENCHMARK "Build the parallel speedup benchmark" ON)
 
 find_package(Threads REQUIRED)
 
@@ -83,4 +84,20 @@ if(BUILD_TESTING)
     )
     target_link_libraries(simulation_engine_test PRIVATE simulation_core)
     add_test(NAME simulation_engine_test COMMAND simulation_engine_test)
+endif()
+
+if(BUILD_BENCHMARK)
+    add_executable(speedup_benchmark
+        bench/speedup_benchmark.cpp
+    )
+    target_link_libraries(speedup_benchmark PRIVATE simulation_core)
+
+    # Not registered with CTest on purpose: timing assertions are unreliable on shared or
+    # single-core build machines. Run it explicitly: cmake --build . --target run_speedup_benchmark
+    add_custom_target(run_speedup_benchmark
+        COMMAND speedup_benchmark
+        DEPENDS speedup_benchmark
+        USES_TERMINAL
+        COMMENT "Measuring parallel speedup of the simulation engine"
+    )
 endif()

@@ -1,6 +1,6 @@
 # Arquitetura e Paralelismo do Motor HPC em C++20 / OpenCL
 
-Documento técnico do motor de computação de alto desempenho (**HPC Risk Simulation Engine**) localizado no diretório [`hpc-engine/`](file:///c:/projects/university/gestao-financeira/hpc-engine).
+Documento técnico do motor de computação de alto desempenho (**HPC Risk Simulation Engine**) localizado no diretório [`hpc-engine/`](../hpc-engine).
 
 O motor é responsável por executar simulações estocásticas de **Monte Carlo com 100.000 a 1.000.000 de cenários** para projeção de fluxo de caixa corporativo, cálculo de **Value at Risk (VaR 99%)**, mediana (`P50`), probabilidade acumulada de ruína financeira e geração de **bandas de percentis diárias** (Cone de Incerteza).
 
@@ -21,12 +21,12 @@ flowchart LR
     F --> G
     G --> B
     B --> A
-    A -. "Falha de Rede / Timeout" .-> H["JVM CPU Fallback (SIMD/SplitMix64)"]
+    A -. "Falha de Rede / Timeout" .-> H["JVM Fallback (Parallel Stream)"]
 ```
 
-- **Protocolo de Comunicação:** gRPC / Protobuf v3 definido em [`src/main/proto/risk_simulation.proto`](file:///c:/projects/university/gestao-financeira/src/main/proto/risk_simulation.proto).
+- **Protocolo de Comunicação:** gRPC / Protobuf v3 definido em [`src/main/proto/risk_simulation.proto`](../src/main/proto/risk_simulation.proto).
 - **Padrão C++ Utilizado:** C++20 (`-std=c++20`), compilado com CMake 3.22+.
-- **Resiliência e Tolerância a Falhas:** Caso o serviço gRPC externo esteja indisponível ou sofra timeout, a classe Java [`GrpcRiskSimulationAdapter`](file:///c:/projects/university/gestao-financeira/src/main/java/com/emanudev/gestaofinanceira/simulation/adapter/out/grpc/GrpcRiskSimulationAdapter.java) executa o algoritmo matemático equivalente localmente via Java Virtual Threads / Parallel Stream em CPU, garantindo 100% de disponibilidade.
+- **Resiliência e Tolerância a Falhas:** Caso o serviço gRPC externo esteja indisponível ou sofra timeout, a classe Java [`GrpcRiskSimulationAdapter`](../src/main/java/com/emanudev/gestaofinanceira/simulation/adapter/out/grpc/GrpcRiskSimulationAdapter.java) executa o mesmo algoritmo localmente via Parallel Stream na JVM e identifica a execução como `JVM-Fallback-ParallelStream` em `execution_device`. Para a mesma requisição e semente, o fallback produz exatamente os mesmos números do motor C++ (ver seção 6.3).
 
 ---
 
@@ -52,7 +52,8 @@ Quando compilado com `ENABLE_OPENCL=ON` e executado em ambiente com driver OpenC
 
 Caso o ambiente não disponha de dispositivo OpenCL ou a compilação use o modo CPU:
 
-- O motor detecta o hardware via `std::thread::hardware_concurrency()`.
+- O número de threads é configurável (`SimulationEngine(prefer_opencl, num_threads)` ou a variável `HPC_NUM_THREADS` do servidor gRPC). O valor `0` (padrão) usa todas as threads de hardware visíveis via `std::thread::hardware_concurrency()`.
+- `execution_device` informa as threads realmente criadas (ex.: `CPU-MultiCore-CPP20-16T`).
 - O espaço total de cenários ($N$) é particionado em *chunks* homogêneos de tamanho $\lceil N / T \rceil$, onde cada thread executa seu loop interno sem contenção de mutexes ou variáveis de condição.
 - Cada thread gera números pseudoaleatórios em registradores locais de 64 bits sem acessar estado compartilhado, eliminando *false sharing*.
 
@@ -60,7 +61,7 @@ Caso o ambiente não disponha de dispositivo OpenCL ou a compilação use o modo
 
 Após a conclusão dos cenários estocásticos, os saldos diários precisam ser ordenados para extrair os percentis diários (`P01`, `P05`, `P25`, `P50`, `P75`, `P95`):
 
-- O motor distribui os $H$ dias do horizonte entre *worker threads* dedicadas (`band_workers = min(H, hardware_concurrency)`).
+- O motor distribui os $H$ dias do horizonte entre *worker threads* dedicadas (`band_workers = min(H, num_threads)`).
 - Cada thread executa `std::sort` sobre o vetor de $N$ saldos de um dia específico ($O(N \log N)$ in-place) e calcula as posições quantílicas interpoladas sem alocações dinâmicas adicionais.
 
 ---
@@ -200,4 +201,60 @@ export HPC_GRPC_PORT=50051
 ```
 
 ### 5.5 Execução via Docker
-O repositório inclui [`hpc-engine/Dockerfile`](file:///c:/projects/university/gestao-financeira/hpc-engine/Dockerfile) multi-stage baseado em Ubuntu 22.04 LTS para provisionamento conteinerizado do serviço gRPC.
+O repositório inclui [`hpc-engine/Dockerfile`](../hpc-engine/Dockerfile) multi-stage baseado em Ubuntu 24.04 LTS para provisionamento conteinerizado do serviço gRPC.
+
+### 5.6 Variáveis de Ambiente do Servidor gRPC
+
+| Variável | Padrão | Efeito |
+|---|---|---|
+| `HPC_GRPC_PORT` | `50051` | Porta de escuta do servidor. |
+| `HPC_NUM_THREADS` | `0` | Threads de trabalho do caminho CPU. `0` usa todas as threads de hardware visíveis. |
+| `HPC_PREFER_OPENCL` | `true` | `false` força o caminho `std::thread` mesmo com OpenCL disponível. |
+
+No `docker-compose.yaml`, o serviço `business-finance-hpc-engine` sobe o motor e a API é configurada com `APP_SIMULATION_GRPC_ENABLED=true` apontando para ele. Fora do Compose o padrão da API continua sendo `APP_SIMULATION_GRPC_ENABLED=false` (fallback na JVM).
+
+---
+
+## 6. Comprovação do Paralelismo
+
+### 6.1 Benchmark de Speedup
+
+O alvo `speedup_benchmark` ([`hpc-engine/bench/speedup_benchmark.cpp`](../hpc-engine/bench/speedup_benchmark.cpp)) executa a mesma carga com 1, 2, 4, ... N threads e mede tempo de parede, tempo de CPU do processo, speedup e eficiência. Ele **falha** (código de saída 1) se o resultado mudar entre contagens de threads ou se a execução com todas as threads não atingir o speedup mínimo.
+
+```bash
+cd hpc-engine/build
+cmake --build . --target run_speedup_benchmark
+# ou, com parâmetros: cenários, horizonte, repetições, speedup mínimo exigido
+./speedup_benchmark 1000000 90 3 1.5
+# pelo container
+docker compose run --rm --entrypoint /app/speedup_benchmark business-finance-hpc-engine
+```
+
+A razão `cpu/wall` é a evidência direta: um programa sequencial fica em ~1,0; um valor próximo de N indica N núcleos ocupados ao mesmo tempo.
+
+### 6.2 Medição de Referência
+
+Intel Core i7-11800H (8 núcleos físicos / 16 lógicos), Windows 11, MSVC 19.41 `/O2`, 1.000.000 de cenários × 90 dias, melhor de 3 execuções:
+
+| threads | wall (s) | cpu (s) | cpu/wall | speedup | eficiência | mesmo resultado |
+|--------:|---------:|--------:|---------:|--------:|-----------:|:---------------:|
+| 1 | 8,028 | 7,438 | 0,93 | 1,00x | 100% | sim |
+| 2 | 4,343 | 7,953 | 1,83 | 1,85x | 92% | sim |
+| 4 | 2,436 | 8,000 | 3,28 | 3,30x | 82% | sim |
+| 8 | 1,527 | 8,359 | 5,48 | 5,26x | 66% | sim |
+| 16 | 1,109 | 12,047 | 10,86 | 7,24x | 45% | sim |
+
+Acima de 8 threads o ganho diminui porque as 16 threads lógicas compartilham 8 núcleos físicos (Hyper-Threading).
+
+### 6.3 Paridade C++ / JVM
+
+Um vetor de referência compartilhado (semente `20261026`, 100.000 cenários, 30 dias) é verificado dos dois lados:
+
+- C++: `parity_params()` em [`hpc-engine/tests/simulation_engine_test.cpp`](../hpc-engine/tests/simulation_engine_test.cpp), executado com 1, 2, 3 e 8 threads.
+- Java: `shouldMatchCppEngineGoldenVectorOnJvmFallback` em `GrpcRiskSimulationAdapterTest`.
+
+Os testes C++ usam verificações próprias (`CHECK`/`CHECK_EQ`) em vez de `assert`, para continuarem ativos em builds `Release` (`-DNDEBUG`).
+
+### 6.4 Integração Contínua
+
+O workflow [`.github/workflows/hpc-engine.yml`](../.github/workflows/hpc-engine.yml) compila o motor em `Release`, roda os testes e o benchmark de speedup a cada PR que altere `hpc-engine/` ou o contrato Protobuf.

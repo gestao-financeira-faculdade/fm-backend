@@ -1,6 +1,6 @@
 // OpenCL 1.2+ Kernel for Stochastic Cash Flow Monte Carlo Simulation
 // Parallelizes 100,000+ scenarios (1 work-item = 1 stochastic trajectory)
-// Uses SplitMix64 seeding + Xoroshiro128+ / Xorshift64* PRNG in 64-bit integer arithmetic
+// Uses SplitMix64 seeding + Xorshift64* PRNG in 64-bit integer arithmetic (same streams as the CPU path)
 
 inline ulong splitmix64(ulong z) {
     z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
@@ -83,7 +83,8 @@ __kernel void simulate_cash_flow_monte_carlo(
             if (shock_multiplier < 0.0) {
                 shock_multiplier = 0.0;
             }
-            realized_var_pay = (long)rint((double)var_pay * shock_multiplier);
+            // round() is half-away-from-zero, like std::llround on the CPU path (rint would be half-to-even).
+            realized_var_pay = (long)round((double)var_pay * shock_multiplier);
         }
 
         current_balance = current_balance + realized_rec - payable_fixed_cents[day] - realized_var_pay;

@@ -40,8 +40,9 @@ int64_t percentile_sorted(const int64_t* sorted_data, size_t n, double quantile)
 
 } // namespace
 
-SimulationEngine::SimulationEngine(bool prefer_opencl)
-    : prefer_opencl_(prefer_opencl) {}
+SimulationEngine::SimulationEngine(bool prefer_opencl, unsigned int num_threads)
+    : prefer_opencl_(prefer_opencl),
+      num_threads_(num_threads != 0 ? num_threads : std::max(1u, std::thread::hardware_concurrency())) {}
 
 uint64_t SimulationEngine::splitmix64(uint64_t z) noexcept {
     z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
@@ -105,8 +106,9 @@ SimulationOutput SimulationEngine::simulate(const SimulationParams& params) cons
         );
     }
 
+    unsigned int threads_used = 0;
     if (!executed_on_opencl) {
-        execute_cpu_multicore(
+        threads_used = execute_cpu_multicore(
             params,
             fixed_payable,
             var_payable,
@@ -125,8 +127,7 @@ SimulationOutput SimulationEngine::simulate(const SimulationParams& params) cons
     }
 
     std::vector<DailyBand> bands(horizon);
-    const unsigned int hw_threads = std::max(1u, std::thread::hardware_concurrency());
-    const unsigned int band_workers = std::min(static_cast<unsigned int>(horizon), hw_threads);
+    const unsigned int band_workers = std::min(static_cast<unsigned int>(horizon), num_threads_);
 
     std::vector<std::thread> workers;
     workers.reserve(band_workers);
@@ -169,12 +170,13 @@ SimulationOutput SimulationEngine::simulate(const SimulationParams& params) cons
         .median_p50_cents = terminal_band.p50_cents,
         .ruin_probability_pct = ruin_prob_pct,
         .execution_device = execution_device,
+        .threads_used = static_cast<int32_t>(threads_used),
         .execution_time_ms = elapsed_ms,
         .daily_bands = std::move(bands)
     };
 }
 
-void SimulationEngine::execute_cpu_multicore(
+unsigned int SimulationEngine::execute_cpu_multicore(
     const SimulationParams& params,
     const std::vector<int64_t>& fixed_payable,
     const std::vector<int64_t>& var_payable,
@@ -190,8 +192,7 @@ void SimulationEngine::execute_cpu_multicore(
     const double cost_shock = normalize_fraction(params.variable_cost_shock_pct);
     const uint64_t base_seed = params.random_seed != 0ULL ? params.random_seed : 42ULL;
 
-    const unsigned int num_threads = std::max(1u, std::thread::hardware_concurrency());
-    device_out = "CPU-MultiCore-CPP20-" + std::to_string(num_threads) + "T";
+    const unsigned int num_threads = num_threads_;
 
     std::vector<std::thread> threads;
     threads.reserve(num_threads);
@@ -252,6 +253,11 @@ void SimulationEngine::execute_cpu_multicore(
     for (auto& th : threads) {
         th.join();
     }
+
+    // Report the threads that actually ran, not the ones that were requested.
+    const unsigned int spawned = static_cast<unsigned int>(threads.size());
+    device_out = "CPU-MultiCore-CPP20-" + std::to_string(spawned) + "T";
+    return spawned;
 }
 
 bool SimulationEngine::try_execute_opencl(
@@ -338,11 +344,35 @@ bool SimulationEngine::try_execute_opencl(
     const size_t balances_bytes = daily_balances.size() * sizeof(int64_t);
     const size_t ruin_bytes = ruin_flags.size() * sizeof(uint8_t);
 
-    cl_mem buf_fixed = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, horizon_bytes, const_cast<int64_t*>(fixed_payable.data()), &err);
-    cl_mem buf_var = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, horizon_bytes, const_cast<int64_t*>(var_payable.data()), &err);
-    cl_mem buf_rec = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, horizon_bytes, const_cast<int64_t*>(receivable.data()), &err);
-    cl_mem buf_balances = clCreateBuffer(context, CL_MEM_WRITE_ONLY, balances_bytes, nullptr, &err);
-    cl_mem buf_ruin = clCreateBuffer(context, CL_MEM_WRITE_ONLY, ruin_bytes, nullptr, &err);
+    cl_int err_fixed = CL_SUCCESS;
+    cl_int err_var = CL_SUCCESS;
+    cl_int err_rec = CL_SUCCESS;
+    cl_int err_balances = CL_SUCCESS;
+    cl_int err_ruin = CL_SUCCESS;
+    cl_mem buf_fixed = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, horizon_bytes, const_cast<int64_t*>(fixed_payable.data()), &err_fixed);
+    cl_mem buf_var = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, horizon_bytes, const_cast<int64_t*>(var_payable.data()), &err_var);
+    cl_mem buf_rec = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, horizon_bytes, const_cast<int64_t*>(receivable.data()), &err_rec);
+    cl_mem buf_balances = clCreateBuffer(context, CL_MEM_WRITE_ONLY, balances_bytes, nullptr, &err_balances);
+    cl_mem buf_ruin = clCreateBuffer(context, CL_MEM_WRITE_ONLY, ruin_bytes, nullptr, &err_ruin);
+
+    const auto release_all = [&]() {
+        if (buf_fixed) clReleaseMemObject(buf_fixed);
+        if (buf_var) clReleaseMemObject(buf_var);
+        if (buf_rec) clReleaseMemObject(buf_rec);
+        if (buf_balances) clReleaseMemObject(buf_balances);
+        if (buf_ruin) clReleaseMemObject(buf_ruin);
+        clReleaseKernel(kernel);
+        clReleaseProgram(program);
+        clReleaseCommandQueue(queue);
+        clReleaseContext(context);
+    };
+
+    // A device that cannot hold the balances matrix must fall back to the CPU path, not return garbage.
+    if (err_fixed != CL_SUCCESS || err_var != CL_SUCCESS || err_rec != CL_SUCCESS
+        || err_balances != CL_SUCCESS || err_ruin != CL_SUCCESS) {
+        release_all();
+        return false;
+    }
 
     const cl_long init_bal = params.initial_balance_cents;
     const cl_int horizon = params.horizon_days;
@@ -351,39 +381,41 @@ bool SimulationEngine::try_execute_opencl(
     const cl_double shock_pct = normalize_fraction(params.variable_cost_shock_pct);
     const cl_ulong seed = params.random_seed != 0ULL ? params.random_seed : 42ULL;
 
-    clSetKernelArg(kernel, 0, sizeof(cl_long), &init_bal);
-    clSetKernelArg(kernel, 1, sizeof(cl_int), &horizon);
-    clSetKernelArg(kernel, 2, sizeof(cl_int), &scenarios);
-    clSetKernelArg(kernel, 3, sizeof(cl_double), &def_rate);
-    clSetKernelArg(kernel, 4, sizeof(cl_double), &shock_pct);
-    clSetKernelArg(kernel, 5, sizeof(cl_ulong), &seed);
-    clSetKernelArg(kernel, 6, sizeof(cl_mem), &buf_fixed);
-    clSetKernelArg(kernel, 7, sizeof(cl_mem), &buf_var);
-    clSetKernelArg(kernel, 8, sizeof(cl_mem), &buf_rec);
-    clSetKernelArg(kernel, 9, sizeof(cl_mem), &buf_balances);
-    clSetKernelArg(kernel, 10, sizeof(cl_mem), &buf_ruin);
+    err = clSetKernelArg(kernel, 0, sizeof(cl_long), &init_bal);
+    err |= clSetKernelArg(kernel, 1, sizeof(cl_int), &horizon);
+    err |= clSetKernelArg(kernel, 2, sizeof(cl_int), &scenarios);
+    err |= clSetKernelArg(kernel, 3, sizeof(cl_double), &def_rate);
+    err |= clSetKernelArg(kernel, 4, sizeof(cl_double), &shock_pct);
+    err |= clSetKernelArg(kernel, 5, sizeof(cl_ulong), &seed);
+    err |= clSetKernelArg(kernel, 6, sizeof(cl_mem), &buf_fixed);
+    err |= clSetKernelArg(kernel, 7, sizeof(cl_mem), &buf_var);
+    err |= clSetKernelArg(kernel, 8, sizeof(cl_mem), &buf_rec);
+    err |= clSetKernelArg(kernel, 9, sizeof(cl_mem), &buf_balances);
+    err |= clSetKernelArg(kernel, 10, sizeof(cl_mem), &buf_ruin);
 
+    // Every step must succeed: a partially filled output would silently corrupt the percentiles.
     const size_t global_work_size = static_cast<size_t>(params.num_scenarios);
-    err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global_work_size, nullptr, 0, nullptr, nullptr);
     if (err == CL_SUCCESS) {
-        clEnqueueReadBuffer(queue, buf_balances, CL_TRUE, 0, balances_bytes, daily_balances.data(), 0, nullptr, nullptr);
-        clEnqueueReadBuffer(queue, buf_ruin, CL_TRUE, 0, ruin_bytes, ruin_flags.data(), 0, nullptr, nullptr);
+        err = clEnqueueNDRangeKernel(queue, kernel, 1, nullptr, &global_work_size, nullptr, 0, nullptr, nullptr);
+    }
+    if (err == CL_SUCCESS) {
+        err = clEnqueueReadBuffer(queue, buf_balances, CL_TRUE, 0, balances_bytes, daily_balances.data(), 0, nullptr, nullptr);
+    }
+    if (err == CL_SUCCESS) {
+        err = clEnqueueReadBuffer(queue, buf_ruin, CL_TRUE, 0, ruin_bytes, ruin_flags.data(), 0, nullptr, nullptr);
     }
 
-    char dev_name[128] = {0};
-    clGetDeviceInfo(device_id, CL_DEVICE_NAME, sizeof(dev_name) - 1, dev_name, nullptr);
-    device_out = std::string("OpenCL-") + (dev_name[0] != '\0' ? dev_name : "Device");
+    if (err == CL_SUCCESS) {
+        char dev_name[128] = {0};
+        clGetDeviceInfo(device_id, CL_DEVICE_NAME, sizeof(dev_name) - 1, dev_name, nullptr);
+        device_out = std::string("OpenCL-") + (dev_name[0] != ' ' ? dev_name : "Device");
+    } else {
+        // The CPU path overwrites every cell, but start it from a clean slate anyway.
+        std::fill(daily_balances.begin(), daily_balances.end(), int64_t{0});
+        std::fill(ruin_flags.begin(), ruin_flags.end(), uint8_t{0});
+    }
 
-    clReleaseMemObject(buf_fixed);
-    clReleaseMemObject(buf_var);
-    clReleaseMemObject(buf_rec);
-    clReleaseMemObject(buf_balances);
-    clReleaseMemObject(buf_ruin);
-    clReleaseKernel(kernel);
-    clReleaseProgram(program);
-    clReleaseCommandQueue(queue);
-    clReleaseContext(context);
-
+    release_all();
     return err == CL_SUCCESS;
 #endif
 }

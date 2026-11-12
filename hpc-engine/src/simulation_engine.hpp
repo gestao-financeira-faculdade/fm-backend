@@ -37,14 +37,18 @@ struct SimulationOutput {
     int64_t var_99_cents{0};
     int64_t median_p50_cents{0};
     double ruin_probability_pct{0.0};
-    std::string execution_device{"CPU-Fallback-SIMD-SplitMix64"};
+    std::string execution_device{"UNKNOWN"};
+    int32_t threads_used{0};
     int64_t execution_time_ms{1};
     std::vector<DailyBand> daily_bands{};
 };
 
 class SimulationEngine {
 public:
-    explicit SimulationEngine(bool prefer_opencl = true);
+    // num_threads == 0 means "use every hardware thread visible to the process".
+    explicit SimulationEngine(bool prefer_opencl = true, unsigned int num_threads = 0);
+
+    unsigned int num_threads() const noexcept { return num_threads_; }
 
     SimulationOutput simulate(const SimulationParams& params) const;
 
@@ -54,8 +58,10 @@ public:
 
 private:
     bool prefer_opencl_;
+    unsigned int num_threads_;
 
-    void execute_cpu_multicore(
+    // Returns the number of worker threads actually spawned.
+    unsigned int execute_cpu_multicore(
         const SimulationParams& params,
         const std::vector<int64_t>& fixed_payable,
         const std::vector<int64_t>& var_payable,

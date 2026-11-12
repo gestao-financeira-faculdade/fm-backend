@@ -2,6 +2,7 @@
 #include "risk_simulation.grpc.pb.h"
 
 #include <grpcpp/grpcpp.h>
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -83,7 +84,17 @@ int main(int argc, char** argv) {
     const char* port_env = std::getenv("HPC_GRPC_PORT");
     const std::string server_address = std::string("0.0.0.0:") + (port_env != nullptr ? port_env : "50051");
 
-    gestaofinanceira::hpc::SimulationEngine engine(true);
+    // HPC_NUM_THREADS=0 (or unset) uses every hardware thread visible to the process.
+    const char* threads_env = std::getenv("HPC_NUM_THREADS");
+    const unsigned int num_threads = threads_env != nullptr
+        ? static_cast<unsigned int>(std::max(0L, std::strtol(threads_env, nullptr, 10)))
+        : 0u;
+    const char* opencl_env = std::getenv("HPC_PREFER_OPENCL");
+    const bool prefer_opencl = opencl_env == nullptr || std::string(opencl_env) != "false";
+
+    gestaofinanceira::hpc::SimulationEngine engine(prefer_opencl, num_threads);
+    std::cout << "[HPC-Engine] worker threads=" << engine.num_threads()
+              << " prefer_opencl=" << (prefer_opencl ? "true" : "false") << std::endl;
     gestaofinanceira::hpc::RiskSimulationServiceImpl service(std::move(engine));
 
     grpc::ServerBuilder builder;

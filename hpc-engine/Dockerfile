@@ -25,6 +25,7 @@ RUN cmake .. \
     -DENABLE_OPENCL=ON \
     -DBUILD_GRPC_SERVER=ON \
     -DBUILD_TESTING=ON \
+    -DBUILD_BENCHMARK=ON \
     && cmake --build . -j"$(nproc)" \
     && ctest --output-on-failure
 
@@ -41,6 +42,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /workspace/hpc-engine/build/hpc_grpc_server /app/hpc_grpc_server
+# Evidence tool: docker compose run --rm --entrypoint /app/speedup_benchmark business-finance-hpc-engine
+COPY --from=builder /workspace/hpc-engine/build/speedup_benchmark /app/speedup_benchmark
 COPY --from=builder /workspace/hpc-engine/kernels/monte_carlo.cl /app/kernels/monte_carlo.cl
 
 EXPOSE 50051

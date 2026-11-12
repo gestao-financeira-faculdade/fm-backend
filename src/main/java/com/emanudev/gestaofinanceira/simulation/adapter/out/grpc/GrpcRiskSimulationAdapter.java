@@ -41,6 +41,9 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
 
     private static final Logger log = LoggerFactory.getLogger(GrpcRiskSimulationAdapter.class);
 
+    /** Reported when the simulation ran inside the JVM instead of the C++ engine. */
+    static final String JVM_FALLBACK_DEVICE = "JVM-Fallback-ParallelStream";
+
     private final Semaphore concurrencyLimiter;
     private final int maxConcurrentSimulations;
     private final boolean grpcEnabled;
@@ -245,8 +248,9 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
     }
 
     /**
-     * Deterministic parallel stochastic simulation using SplitMix64/Xorshift64*
-     * matching the C++20/OpenCL kernel contract over Protobuf messages.
+     * Deterministic parallel stochastic simulation using SplitMix64/Xorshift64*.
+     * Produces the same numbers as the C++20 engine for the same request and seed;
+     * the shared golden vector in the adapter test and in simulation_engine_test.cpp enforces it.
      */
     public RiskSimulationResponse simulateDeterministicCpu(RiskSimulationRequest request) {
         long startNanos = System.nanoTime();
@@ -330,8 +334,8 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
         if (receivableCents <= 0L || defaultRate <= 0.0) {
             return new PrngStep(receivableCents, state);
         }
-        long nextState = xorshift64Star(state);
-        long realized = toUnitDouble(nextState) < defaultRate ? 0L : receivableCents;
+        long nextState = xorshiftAdvance(state);
+        long realized = toUnitDouble(xorshiftOutput(nextState)) < defaultRate ? 0L : receivableCents;
         return new PrngStep(realized, nextState);
     }
 
@@ -339,10 +343,10 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
         if (varPayableCents <= 0L || costShock <= 0.0) {
             return new PrngStep(varPayableCents, state);
         }
-        long state1 = xorshift64Star(state);
-        double u1 = toUnitDouble(state1);
-        long state2 = xorshift64Star(state1);
-        double u2 = toUnitDouble(state2);
+        long state1 = xorshiftAdvance(state);
+        double u1 = toUnitDouble(xorshiftOutput(state1));
+        long state2 = xorshiftAdvance(state1);
+        double u2 = toUnitDouble(xorshiftOutput(state2));
         double shockMultiplier = Math.max(0.0, 1.0 + costShock * ((u1 + u2 - 1.0) + 0.25));
         return new PrngStep(Math.round(varPayableCents * shockMultiplier), state2);
     }
@@ -382,7 +386,7 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
                 .setVar99Cents(terminalBand.getP01Cents())
                 .setMedianP50Cents(terminalBand.getP50Cents())
                 .setRuinProbabilityPct(ruinProbabilityPct)
-                .setExecutionDevice("CPU-Fallback-SIMD-SplitMix64")
+                .setExecutionDevice(JVM_FALLBACK_DEVICE)
                 .setExecutionTimeMs(elapsedMs)
                 .addAllDailyBands(Arrays.asList(bands))
                 .build();
@@ -455,11 +459,20 @@ public class GrpcRiskSimulationAdapter implements RiskSimulationEnginePort {
         return z ^ (z >>> 31);
     }
 
-    private static long xorshift64Star(long x) {
+    /**
+     * Xorshift64* state transition. The state is the value BEFORE the output multiplication,
+     * exactly as in the C++ engine and the OpenCL kernel; feeding the multiplied output back
+     * as state would produce a different random stream for the same seed.
+     */
+    private static long xorshiftAdvance(long x) {
         x ^= x >>> 12;
         x ^= x << 25;
         x ^= x >>> 27;
-        return x * 0x2545F4914F6CDD1DL;
+        return x;
+    }
+
+    private static long xorshiftOutput(long state) {
+        return state * 0x2545F4914F6CDD1DL;
     }
 
     private static double toUnitDouble(long bits) {

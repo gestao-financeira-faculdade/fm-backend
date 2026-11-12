@@ -2,6 +2,7 @@ package com.emanudev.gestaofinanceira.simulation.adapter.out.grpc;
 
 import com.emanudev.gestaofinanceira.shared.domain.Money;
 import com.emanudev.gestaofinanceira.shared.domain.Percentage;
+import com.emanudev.gestaofinanceira.simulation.adapter.out.grpc.proto.DailyProjectionBand;
 import com.emanudev.gestaofinanceira.simulation.adapter.out.grpc.proto.RiskSimulationRequest;
 import com.emanudev.gestaofinanceira.simulation.adapter.out.grpc.proto.RiskSimulationResponse;
 import com.emanudev.gestaofinanceira.simulation.domain.model.DailyPercentileBand;
@@ -77,7 +78,41 @@ class GrpcRiskSimulationAdapterTest {
             assertThat(band.getP50Cents()).isLessThanOrEqualTo(band.getP75Cents());
             assertThat(band.getP75Cents()).isLessThanOrEqualTo(band.getP95Cents());
         });
-        assertThat(response.getExecutionDevice()).isEqualTo("CPU-Fallback-SIMD-SplitMix64");
+        assertThat(response.getExecutionDevice()).isEqualTo(GrpcRiskSimulationAdapter.JVM_FALLBACK_DEVICE);
+    }
+
+    /**
+     * Shared parity vector: the expected values were produced by the C++ engine and are asserted
+     * there too (hpc-engine/tests/simulation_engine_test.cpp, parity_params). Change both together.
+     */
+    @Test
+    void shouldMatchCppEngineGoldenVectorOnJvmFallback() {
+        RiskSimulationRequest request = adapter.buildProtobufRequest(
+                Money.brl("3000.00"), params(30, "5.00", "10.00"), FIXED_SEED, cashFlows()
+        );
+
+        RiskSimulationResponse response = adapter.simulateDeterministicCpu(request);
+
+        assertThat(response.getVar99Cents()).isEqualTo(-274_219L);
+        assertThat(response.getMedianP50Cents()).isEqualTo(132_098L);
+        assertThat(response.getRuinProbabilityPct()).isEqualTo(9.817);
+        assertBand(response, 1, 65_106L, 75_344L, 315_229L, 317_800L, 320_213L, 323_394L);
+        assertBand(response, 5, -111_068L, -91_544L, 289_168L, 294_161L, 298_628L, 304_415L);
+        assertBand(response, 15, -274_219L, -251_874L, 126_076L, 132_098L, 137_121L, 143_566L);
+    }
+
+    private static void assertBand(
+            RiskSimulationResponse response, int dayOffset,
+            long p01, long p05, long p25, long p50, long p75, long p95
+    ) {
+        DailyProjectionBand band = response.getDailyBands(dayOffset - 1);
+        assertThat(band.getDayOffset()).isEqualTo(dayOffset);
+        assertThat(band.getP01Cents()).isEqualTo(p01);
+        assertThat(band.getP05Cents()).isEqualTo(p05);
+        assertThat(band.getP25Cents()).isEqualTo(p25);
+        assertThat(band.getP50Cents()).isEqualTo(p50);
+        assertThat(band.getP75Cents()).isEqualTo(p75);
+        assertThat(band.getP95Cents()).isEqualTo(p95);
     }
 
     @Test

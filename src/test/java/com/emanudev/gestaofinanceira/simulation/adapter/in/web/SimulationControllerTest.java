@@ -130,7 +130,7 @@ class SimulationControllerTest {
                 SIMULATION_ID, null, 30, 100_000, Money.brl("50000.00"),
                 Percentage.of("5.00"), Percentage.of("10.00"), 42L,
                 Money.brl("-500.00"), Money.brl("5000.00"), Percentage.of("2.5000"),
-                List.of(band), "CPU-Fallback-SIMD-SplitMix64", 120L,
+                List.of(band), "JVM-Fallback-ParallelStream", 120L,
                 Instant.parse("2026-10-26T12:00:00Z")
         );
     }

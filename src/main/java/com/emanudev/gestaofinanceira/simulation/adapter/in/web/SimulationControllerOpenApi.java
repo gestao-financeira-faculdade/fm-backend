@@ -30,7 +30,7 @@ public interface SimulationControllerOpenApi {
 
     @Operation(
             summary = "Disparar nova simulação estocástica de Monte Carlo",
-            description = "Executa até 500.000 cenários estocásticos para o horizonte configurado (30, 60 ou 90 dias) via motor gRPC C++/OpenCL ou fallback paralelo em JVM, persistindo o resultado e o Cone de Incerteza. Exclusivo para ADMIN."
+            description = "Executa de 100.000 a 1.000.000 de cenários estocásticos para o horizonte configurado (30, 60 ou 90 dias) via motor gRPC C++/OpenCL ou fallback paralelo em JVM, persistindo o resultado e o Cone de Incerteza. Exclusivo para ADMIN."
     )
     @ApiResponses({
             @ApiResponse(

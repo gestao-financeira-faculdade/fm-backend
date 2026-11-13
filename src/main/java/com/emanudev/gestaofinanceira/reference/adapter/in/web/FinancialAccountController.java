@@ -2,15 +2,14 @@ package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 
 import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CreateFinancialAccountRequest;
 import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.FinancialAccountResponse;
+import com.emanudev.gestaofinanceira.reference.adapter.in.web.mapper.ReferenceDataWebMapper;
 import com.emanudev.gestaofinanceira.reference.application.usecase.CreateFinancialAccountUseCase;
 import com.emanudev.gestaofinanceira.reference.application.usecase.GetFinancialAccountUseCase;
 import com.emanudev.gestaofinanceira.reference.application.usecase.ListFinancialAccountsUseCase;
 import com.emanudev.gestaofinanceira.reference.domain.FinancialAccount;
-import com.emanudev.gestaofinanceira.shared.domain.Money;
-import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,41 +20,56 @@ public class FinancialAccountController implements FinancialAccountControllerOpe
     private final CreateFinancialAccountUseCase createFinancialAccountUseCase;
     private final ListFinancialAccountsUseCase listFinancialAccountsUseCase;
     private final GetFinancialAccountUseCase getFinancialAccountUseCase;
+    private final ReferenceDataWebMapper referenceDataWebMapper;
+
+    @Autowired
+    public FinancialAccountController(
+            CreateFinancialAccountUseCase createFinancialAccountUseCase,
+            ListFinancialAccountsUseCase listFinancialAccountsUseCase,
+            GetFinancialAccountUseCase getFinancialAccountUseCase,
+            ReferenceDataWebMapper referenceDataWebMapper
+    ) {
+        this.createFinancialAccountUseCase = createFinancialAccountUseCase;
+        this.listFinancialAccountsUseCase = listFinancialAccountsUseCase;
+        this.getFinancialAccountUseCase = getFinancialAccountUseCase;
+        this.referenceDataWebMapper = referenceDataWebMapper;
+    }
 
     public FinancialAccountController(
             CreateFinancialAccountUseCase createFinancialAccountUseCase,
             ListFinancialAccountsUseCase listFinancialAccountsUseCase,
             GetFinancialAccountUseCase getFinancialAccountUseCase
     ) {
-        this.createFinancialAccountUseCase = createFinancialAccountUseCase;
-        this.listFinancialAccountsUseCase = listFinancialAccountsUseCase;
-        this.getFinancialAccountUseCase = getFinancialAccountUseCase;
+        this(
+                createFinancialAccountUseCase,
+                listFinancialAccountsUseCase,
+                getFinancialAccountUseCase,
+                new ReferenceDataWebMapper()
+        );
     }
 
     @Override
     public ResponseEntity<List<FinancialAccountResponse>> listAccounts() {
-        List<FinancialAccountResponse> accounts = listFinancialAccountsUseCase.execute().stream()
-                .map(FinancialAccountResponse::fromDomain)
-                .toList();
-        return ResponseEntity.ok(accounts);
+        return ResponseEntity.ok(
+                referenceDataWebMapper.toAccountResponseList(listFinancialAccountsUseCase.execute())
+        );
     }
 
     @Override
     public ResponseEntity<FinancialAccountResponse> getAccount(UUID id) {
-        return ResponseEntity.ok(FinancialAccountResponse.fromDomain(getFinancialAccountUseCase.execute(id)));
+        return ResponseEntity.ok(
+                referenceDataWebMapper.toAccountResponse(getFinancialAccountUseCase.execute(id))
+        );
     }
 
     @Override
     public ResponseEntity<FinancialAccountResponse> createAccount(CreateFinancialAccountRequest request) {
-        String currency = Optional.ofNullable(request.currency())
-                .filter(c -> !c.isBlank())
-                .orElse(Money.DEFAULT_CURRENCY);
-        BigDecimal balance = Optional.ofNullable(request.initialBalance()).orElse(BigDecimal.ZERO);
         FinancialAccount created = createFinancialAccountUseCase.execute(
                 request.name(),
                 request.accountType(),
-                Money.of(balance, currency)
+                referenceDataWebMapper.resolveInitialBalance(request)
         );
-        return ResponseEntity.status(HttpStatus.CREATED).body(FinancialAccountResponse.fromDomain(created));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(referenceDataWebMapper.toAccountResponse(created));
     }
 }

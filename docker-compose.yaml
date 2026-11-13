@@ -42,12 +42,31 @@ services:
       - business-finance-db
       - business-finance-redis
       - ministack
+      - business-finance-hpc-engine
     environment:
       DB_HOST: business-finance-db
       REDIS_HOST: business-finance-redis
       APP_S3_ENDPOINT: http://ministack:4566
+      APP_SIMULATION_GRPC_ENABLED: "true"
+      APP_SIMULATION_GRPC_HOST: business-finance-hpc-engine
+      APP_SIMULATION_GRPC_PORT: "50051"
     ports:
       - "8080:8080"
+
+  business-finance-hpc-engine:
+    build:
+      context: .
+      dockerfile: hpc-engine/Dockerfile
+    container_name: business-finance-hpc-engine
+    restart: unless-stopped
+    environment:
+      HPC_GRPC_PORT: "50051"
+      # 0 = use every CPU the container is allowed to see (limit it with `cpus:` / `cpuset:`).
+      HPC_NUM_THREADS: ${HPC_NUM_THREADS:-0}
+      # The image only ships PoCL (OpenCL on CPU); keep the native std::thread path unless a GPU runtime is mounted.
+      HPC_PREFER_OPENCL: ${HPC_PREFER_OPENCL:-false}
+    ports:
+      - "50051:50051"
 
   prometheus:
     image: prom/prometheus:v3.13.4

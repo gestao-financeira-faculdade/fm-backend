@@ -1,6 +1,6 @@
 package com.emanudev.gestaofinanceira.audit.adapter.out.persistence;
 
-import com.emanudev.gestaofinanceira.audit.adapter.in.aop.FinancialAuditAspect;
+import com.emanudev.gestaofinanceira.audit.application.AuditExecutionContext;
 import com.emanudev.gestaofinanceira.audit.application.port.out.AuditLogRepositoryPort;
 import com.emanudev.gestaofinanceira.audit.domain.model.AuditLogEntry;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
@@ -64,7 +64,7 @@ public class AuditPersistenceAdapter implements AuditTrailPort, AuditLogReposito
             Object previousState,
             Object newState
     ) {
-        FinancialAuditAspect.markExplicitAuditRecorded();
+        AuditExecutionContext.markExplicitAuditRecorded();
 
         ActorContext actor = resolveCurrentActor();
         String correlationId = resolveCorrelationId();
@@ -76,7 +76,11 @@ public class AuditPersistenceAdapter implements AuditTrailPort, AuditLogReposito
                 entityType,
                 entityId,
                 action,
-                actor,
+                actor.userId(),
+                actor.userName(),
+                actor.role(),
+                actor.actorType(),
+                actor.ipAddress(),
                 correlationId,
                 previousJson,
                 newJson,

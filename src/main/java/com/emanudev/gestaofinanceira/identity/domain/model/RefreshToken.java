@@ -10,7 +10,8 @@ public record RefreshToken(
         String tokenHash,
         Instant expiresAt,
         Instant revokedAt,
-        Instant createdAt
+        Instant createdAt,
+        UUID familyId
 ) {
 
     public RefreshToken {
@@ -19,10 +20,19 @@ public record RefreshToken(
         Objects.requireNonNull(tokenHash, "RefreshToken tokenHash must not be null");
         Objects.requireNonNull(expiresAt, "RefreshToken expiresAt must not be null");
         Objects.requireNonNull(createdAt, "RefreshToken createdAt must not be null");
+        Objects.requireNonNull(familyId, "RefreshToken familyId must not be null");
 
         if (tokenHash.isBlank()) {
             throw new IllegalArgumentException("RefreshToken tokenHash must not be blank");
         }
+    }
+
+    public RefreshToken(UUID id, UUID userId, String tokenHash, Instant expiresAt, Instant revokedAt, Instant createdAt) {
+        this(id, userId, tokenHash, expiresAt, revokedAt, createdAt, id);
+    }
+
+    public static RefreshToken issue(UUID userId, String tokenHash, Instant now, Instant expiresAt, UUID familyId) {
+        return new RefreshToken(UUID.randomUUID(), userId, tokenHash, expiresAt, null, now, familyId);
     }
 
     public boolean isExpired(Instant now) {
@@ -43,6 +53,6 @@ public record RefreshToken(
         if (this.revokedAt != null) {
             return this;
         }
-        return new RefreshToken(id, userId, tokenHash, expiresAt, now, createdAt);
+        return new RefreshToken(id, userId, tokenHash, expiresAt, now, createdAt, familyId);
     }
 }

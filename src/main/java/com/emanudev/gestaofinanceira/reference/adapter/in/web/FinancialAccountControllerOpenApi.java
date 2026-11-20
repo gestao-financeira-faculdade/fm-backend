@@ -72,7 +72,7 @@ public interface FinancialAccountControllerOpenApi {
 
     @Operation(
             summary = "Criar nova conta financeira",
-            description = "Cadastra uma nova conta bancária, caixa ou conta de investimento. Operação permitida para ADMIN e ANALISTA."
+            description = "Cadastra uma nova conta bancária, caixa ou conta de investimento. Operação permitida apenas para ADMIN."
     )
     @ApiResponses({
             @ApiResponse(
@@ -87,7 +87,7 @@ public interface FinancialAccountControllerOpenApi {
             ),
             @ApiResponse(
                     responseCode = "403",
-                    description = "Acesso negado (requer papel ADMIN ou ANALISTA)",
+                    description = "Acesso negado (requer papel ADMIN)",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             )
     })

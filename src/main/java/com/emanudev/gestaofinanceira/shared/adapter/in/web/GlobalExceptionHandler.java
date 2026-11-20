@@ -3,6 +3,7 @@ package com.emanudev.gestaofinanceira.shared.adapter.in.web;
 import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
+import com.emanudev.gestaofinanceira.shared.domain.exception.RateLimitExceededException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,8 +21,10 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
@@ -67,6 +70,20 @@ public class GlobalExceptionHandler {
                 ex.getErrorCode(),
                 request
         );
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ProblemDetail> handleRateLimitExceeded(RateLimitExceededException ex, HttpServletRequest request) {
+        ProblemDetail problem = buildProblemDetail(
+                HttpStatus.TOO_MANY_REQUESTS,
+                "Too Many Requests",
+                ex.getMessage(),
+                ex.getErrorCode(),
+                request
+        );
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfter().toSeconds()))
+                .body(problem);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

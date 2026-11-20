@@ -12,11 +12,15 @@ import com.emanudev.gestaofinanceira.identity.application.usecase.AuthenticateUs
 import com.emanudev.gestaofinanceira.identity.application.usecase.GetCurrentUserUseCase;
 import com.emanudev.gestaofinanceira.identity.application.usecase.LogoutUseCase;
 import com.emanudev.gestaofinanceira.identity.application.usecase.RefreshTokenUseCase;
+import com.emanudev.gestaofinanceira.shared.adapter.in.web.ClientAddress;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -66,7 +70,7 @@ public class AuthController implements AuthControllerOpenApi {
     @Override
     public ResponseEntity<TokenResponse> login(LoginRequest request) {
         AuthenticationResult result = authenticateUserUseCase.execute(
-                authWebMapper.toAuthenticateCommand(request)
+                authWebMapper.toAuthenticateCommand(request, ClientAddress.current().orElse(null))
         );
         return ResponseEntity.ok(authWebMapper.toTokenResponse(result));
     }
@@ -82,7 +86,7 @@ public class AuthController implements AuthControllerOpenApi {
     @Override
     public ResponseEntity<Void> logout(LogoutRequest request) {
         ActorContext actor = actorContextPort.getCurrentActor();
-        logoutUseCase.execute(authWebMapper.toLogoutCommand(request, actor));
+        logoutUseCase.execute(authWebMapper.toLogoutCommand(request, actor, currentAccessToken()));
         return ResponseEntity.noContent().build();
     }
 
@@ -90,5 +94,10 @@ public class AuthController implements AuthControllerOpenApi {
     public ResponseEntity<UserSummaryResponse> me() {
         UserProfileResult profile = getCurrentUserUseCase.getCurrentUser();
         return ResponseEntity.ok(authWebMapper.toUserSummaryResponse(profile));
+    }
+
+    private static Jwt currentAccessToken() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getPrincipal() instanceof Jwt jwt ? jwt : null;
     }
 }

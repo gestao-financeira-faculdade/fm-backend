@@ -55,22 +55,36 @@ public class RefreshTokenUseCase {
         Instant now = Instant.now(clock);
         String tokenHash = tokenProvider.hashToken(rawRefreshToken.trim());
 
-        RefreshToken currentToken = refreshTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> {
-                    log.atWarn()
-                            .addKeyValue("event_type", "USER_REFRESH_FAILED")
-                            .addKeyValue("reason", "TOKEN_NOT_FOUND")
-                            .log("Refresh token not found");
-                    return new InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token inválido ou expirado.");
-                });
+        RefreshTokenRepositoryPort.Consumption consumption = refreshTokenRepository.consume(tokenHash, now);
+        RefreshToken currentToken = consumption.token();
 
-        if (currentToken.isRevoked() || currentToken.isExpired(now)) {
+        switch (consumption.status()) {
+            case NOT_FOUND -> {
+                log.atWarn()
+                        .addKeyValue("event_type", "USER_REFRESH_FAILED")
+                        .addKeyValue("reason", "TOKEN_NOT_FOUND")
+                        .log("Refresh token not found");
+                throw new InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token inválido ou expirado.");
+            }
+            case ALREADY_REVOKED -> {
+                refreshTokenRepository.revokeFamily(currentToken.familyId(), now);
+                log.atWarn()
+                        .addKeyValue("event_type", "USER_REFRESH_REUSE_DETECTED")
+                        .addKeyValue("user_id", currentToken.userId())
+                        .addKeyValue("session_id", currentToken.familyId())
+                        .log("Revoked refresh token was reused; session revoked");
+                throw new InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token revogado ou expirado.");
+            }
+            case CONSUMED -> {
+            }
+        }
+
+        if (currentToken.isExpired(now)) {
             log.atWarn()
                     .addKeyValue("event_type", "USER_REFRESH_FAILED")
                     .addKeyValue("user_id", currentToken.userId())
-                    .addKeyValue("revoked", currentToken.isRevoked())
-                    .addKeyValue("expired", currentToken.isExpired(now))
-                    .log("Refresh token is revoked or expired");
+                    .addKeyValue("reason", "TOKEN_EXPIRED")
+                    .log("Refresh token is expired");
             throw new InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token revogado ou expirado.");
         }
 
@@ -78,26 +92,22 @@ public class RefreshTokenUseCase {
                 .orElseThrow(() -> new InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Usuário associado ao token não encontrado."));
 
         if (!user.isActive()) {
-            refreshTokenRepository.save(currentToken.revoke(now));
+            refreshTokenRepository.revokeFamily(currentToken.familyId(), now);
             throw new InvalidCredentialsException("USER_INACTIVE", "Conta de usuário inativa ou bloqueada.");
         }
 
-        RefreshToken revokedToken = currentToken.revoke(now);
-        refreshTokenRepository.save(revokedToken);
-
-        TokenProviderPort.IssueTokenResult issuedAccess = tokenProvider.issueAccessToken(user);
+        UUID sessionId = currentToken.familyId();
+        TokenProviderPort.IssueTokenResult issuedAccess = tokenProvider.issueAccessToken(user, sessionId);
         String newRawRefreshToken = tokenProvider.generateRefreshToken();
         String newRefreshTokenHash = tokenProvider.hashToken(newRawRefreshToken);
 
-        RefreshToken newRefreshToken = new RefreshToken(
-                UUID.randomUUID(),
+        refreshTokenRepository.save(RefreshToken.issue(
                 user.id(),
                 newRefreshTokenHash,
+                now,
                 now.plus(AuthenticateUserUseCase.REFRESH_TOKEN_TTL),
-                null,
-                now
-        );
-        refreshTokenRepository.save(newRefreshToken);
+                sessionId
+        ));
 
         log.atInfo()
                 .addKeyValue("event_type", "USER_TOKEN_REFRESHED")

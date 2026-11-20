@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -22,6 +23,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class JwtTokenProviderAdapter implements TokenProviderPort {
+
+    public static final String SESSION_ID_CLAIM = "sid";
 
     private final JwtEncoder jwtEncoder;
     private final Clock clock;
@@ -53,15 +56,21 @@ public class JwtTokenProviderAdapter implements TokenProviderPort {
         this.accessTokenTtlSeconds = accessTokenTtlSeconds;
     }
 
-    @Override
     public IssueTokenResult issueAccessToken(User user) {
+        return issueAccessToken(user, UUID.randomUUID());
+    }
+
+    @Override
+    public IssueTokenResult issueAccessToken(User user, UUID sessionId) {
         Objects.requireNonNull(user, "user must not be null");
+        Objects.requireNonNull(sessionId, "sessionId must not be null");
 
         Instant issuedAt = Instant.now(clock);
         Instant expiresAt = issuedAt.plusSeconds(accessTokenTtlSeconds);
 
         JwsHeader jwsHeader = JwsHeader.with(MacAlgorithm.HS256).build();
         JwtClaimsSet claims = JwtClaimsSet.builder()
+                .id(UUID.randomUUID().toString())
                 .issuer(issuer)
                 .subject(user.id().toString())
                 .issuedAt(issuedAt)
@@ -69,6 +78,7 @@ public class JwtTokenProviderAdapter implements TokenProviderPort {
                 .claim("email", user.email())
                 .claim("name", user.fullName())
                 .claim("role", user.role().name())
+                .claim(SESSION_ID_CLAIM, sessionId.toString())
                 .build();
 
         String tokenValue = jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claims)).getTokenValue();

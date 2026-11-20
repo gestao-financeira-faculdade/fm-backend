@@ -1,6 +1,8 @@
 package com.emanudev.gestaofinanceira.shared.config;
 
 import java.net.URI;
+import java.util.Arrays;
+import java.util.List;
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -23,6 +25,18 @@ public class ApplicationProperties {
 
     @Value("${app.security.jwt.refresh-token-ttl-days}")
     private long jwtRefreshTokenTtlDays;
+
+    @Value("${app.security.login.max-failures-per-account}")
+    private int loginMaxFailuresPerAccount;
+
+    @Value("${app.security.login.max-failures-per-ip}")
+    private int loginMaxFailuresPerIp;
+
+    @Value("${app.security.login.lock-minutes}")
+    private long loginLockMinutes;
+
+    @Value("${app.security.cors.allowed-origins}")
+    private String corsAllowedOrigins;
 
     @Value("${app.storage.s3.endpoint}")
     private String s3Endpoint;
@@ -62,6 +76,16 @@ public class ApplicationProperties {
 
     @Value("${app.simulation.max-concurrent}")
     private int simulationMaxConcurrent;
+
+    public List<String> corsAllowedOriginList() {
+        if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
+    }
 
     public URI buildErrorTypeUri(String errorCode) {
         String base = errorBaseUri == null

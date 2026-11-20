@@ -1,18 +1,26 @@
 package com.emanudev.gestaofinanceira.identity.config;
 
+import com.emanudev.gestaofinanceira.identity.adapter.out.security.ActiveUserJwtAuthenticationConverter;
+import com.emanudev.gestaofinanceira.identity.application.port.out.AccessTokenBlocklistPort;
+import com.emanudev.gestaofinanceira.identity.application.port.out.UserRepositoryPort;
 import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -25,9 +33,17 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
@@ -35,24 +51,63 @@ import org.springframework.security.web.SecurityFilterChain;
 @Import(ApplicationProperties.class)
 public class SecurityConfig {
 
+    private static final String[] REFERENCE_DATA_ADMIN_ONLY = {
+            "/v1/accounts", "/v1/accounts/**",
+            "/v1/financial-accounts", "/v1/financial-accounts/**",
+            "/v1/categories", "/v1/categories/**"
+    };
+
+    private static final String[] OPERATIONAL_RESOURCES = {
+            "/v1/entries", "/v1/entries/**",
+            "/v1/counterparties", "/v1/counterparties/**"
+    };
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    static final String DEV_DEFAULT_JWT_SECRET = "default-32-bytes-secret-key-for-dev-and-test-env-2026";
+    static final int MIN_JWT_SECRET_BYTES = 32;
+
     @Bean
-    public SecretKey jwtSecretKey(ApplicationProperties applicationProperties) {
-        return new SecretKeySpec(
-                applicationProperties.getJwtSecret().getBytes(StandardCharsets.UTF_8),
-                "HmacSHA256"
-        );
+    public SecretKey jwtSecretKey(ApplicationProperties applicationProperties, Environment environment) {
+        byte[] secret = validatedJwtSecret(applicationProperties.getJwtSecret(), environment);
+        return new SecretKeySpec(secret, "HmacSHA256");
+    }
+
+    static byte[] validatedJwtSecret(String secret, Environment environment) {
+        byte[] bytes = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length < MIN_JWT_SECRET_BYTES) {
+            throw new IllegalStateException(
+                    "APP_JWT_SECRET must have at least " + MIN_JWT_SECRET_BYTES + " bytes for HS256.");
+        }
+        if (DEV_DEFAULT_JWT_SECRET.equals(secret) && !environment.matchesProfiles("dev", "test")) {
+            throw new IllegalStateException(
+                    "APP_JWT_SECRET is not set. The built-in secret is only allowed with the dev or test profile.");
+        }
+        return bytes;
     }
 
     @Bean
-    public JwtDecoder jwtDecoder(SecretKey jwtSecretKey) {
-        return NimbusJwtDecoder.withSecretKey(jwtSecretKey)
+    public JwtDecoder jwtDecoder(
+            SecretKey jwtSecretKey,
+            ApplicationProperties applicationProperties,
+            AccessTokenBlocklistPort accessTokenBlocklist
+    ) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSecretKey)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(applicationProperties.getJwtIssuer()),
+                new JwtClaimValidator<Instant>(JwtClaimNames.EXP, Objects::nonNull),
+                new JwtClaimValidator<String>(JwtClaimNames.JTI, Objects::nonNull),
+                jwt -> jwt.getId() != null && accessTokenBlocklist.isBlocked(jwt.getId())
+                        ? OAuth2TokenValidatorResult.failure(new OAuth2Error(
+                                OAuth2ErrorCodes.INVALID_TOKEN, "Token has been revoked", null))
+                        : OAuth2TokenValidatorResult.success()
+        ));
+        return decoder;
     }
 
     @Bean
@@ -61,20 +116,28 @@ public class SecurityConfig {
     }
 
     @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        authoritiesConverter.setAuthorityPrefix("ROLE_");
-        authoritiesConverter.setAuthoritiesClaimName("role");
+    public ActiveUserJwtAuthenticationConverter jwtAuthenticationConverter(UserRepositoryPort userRepository) {
+        return new ActiveUserJwtAuthenticationConverter(userRepository);
+    }
 
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
-        return converter;
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource(ApplicationProperties applicationProperties) {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(applicationProperties.corsAllowedOriginList());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setExposedHeaders(List.of("Location", "ETag", "Content-Disposition", "Retry-After"));
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            JwtAuthenticationConverter jwtAuthenticationConverter,
+            ActiveUserJwtAuthenticationConverter jwtAuthenticationConverter,
             ApplicationProperties applicationProperties
     ) throws Exception {
         URI unauthorizedTypeUri = applicationProperties.buildErrorTypeUri("UNAUTHORIZED");
@@ -82,11 +145,14 @@ public class SecurityConfig {
 
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
                         .requestMatchers(HttpMethod.POST, "/v1/auth/login", "/v1/auth/refresh").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus", "/actuator/info").permitAll()
+                        .requestMatchers("/error").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                         // Authenticated identity endpoints
@@ -110,34 +176,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/v1/entries", "/v1/entries/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/v1/entries/*/cancel").hasRole("ADMIN")
 
-                        // Financial mutations: allowed for ADMIN and ANALISTA (AUDITOR blocked with 403)
-                        .requestMatchers(HttpMethod.POST,
-                                "/v1/entries", "/v1/entries/**",
-                                "/v1/accounts", "/v1/accounts/**",
-                                "/v1/financial-accounts", "/v1/financial-accounts/**",
-                                "/v1/categories", "/v1/categories/**",
-                                "/v1/counterparties", "/v1/counterparties/**"
-                        ).hasAnyRole("ADMIN", "ANALISTA")
-                        .requestMatchers(HttpMethod.PUT,
-                                "/v1/entries", "/v1/entries/**",
-                                "/v1/accounts", "/v1/accounts/**",
-                                "/v1/financial-accounts", "/v1/financial-accounts/**",
-                                "/v1/categories", "/v1/categories/**",
-                                "/v1/counterparties", "/v1/counterparties/**"
-                        ).hasAnyRole("ADMIN", "ANALISTA")
-                        .requestMatchers(HttpMethod.PATCH,
-                                "/v1/entries", "/v1/entries/**",
-                                "/v1/accounts", "/v1/accounts/**",
-                                "/v1/financial-accounts", "/v1/financial-accounts/**",
-                                "/v1/categories", "/v1/categories/**",
-                                "/v1/counterparties", "/v1/counterparties/**"
-                        ).hasAnyRole("ADMIN", "ANALISTA")
-                        .requestMatchers(HttpMethod.DELETE,
-                                "/v1/accounts", "/v1/accounts/**",
-                                "/v1/financial-accounts", "/v1/financial-accounts/**",
-                                "/v1/categories", "/v1/categories/**",
-                                "/v1/counterparties", "/v1/counterparties/**"
-                        ).hasAnyRole("ADMIN", "ANALISTA")
+                        // Reference data (accounts and categories): strictly ADMIN
+                        .requestMatchers(HttpMethod.POST, REFERENCE_DATA_ADMIN_ONLY).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, REFERENCE_DATA_ADMIN_ONLY).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, REFERENCE_DATA_ADMIN_ONLY).hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, REFERENCE_DATA_ADMIN_ONLY).hasRole("ADMIN")
+
+                        // Entries and counterparties: ADMIN and ANALISTA (AUDITOR blocked with 403)
+                        .requestMatchers(HttpMethod.POST, OPERATIONAL_RESOURCES).hasAnyRole("ADMIN", "ANALISTA")
+                        .requestMatchers(HttpMethod.PUT, OPERATIONAL_RESOURCES).hasAnyRole("ADMIN", "ANALISTA")
+                        .requestMatchers(HttpMethod.PATCH, OPERATIONAL_RESOURCES).hasAnyRole("ADMIN", "ANALISTA")
+                        .requestMatchers(HttpMethod.DELETE, "/v1/counterparties", "/v1/counterparties/**").hasAnyRole("ADMIN", "ANALISTA")
 
                         // Read access to API resources for ADMIN, ANALISTA, AUDITOR
                         .requestMatchers(HttpMethod.GET, "/v1/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")

@@ -1,8 +1,8 @@
 package com.emanudev.gestaofinanceira.identity.adapter.out.security;
 
+import com.emanudev.gestaofinanceira.shared.adapter.in.web.ClientAddress;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
-import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
@@ -14,14 +14,11 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 @Component
 public class SecurityActorContextAdapter implements ActorContextPort {
 
     private static final String DEFAULT_IP_ADDRESS = "127.0.0.1";
-    private static final String FORWARDED_FOR_HEADER = "X-Forwarded-For";
 
     @Override
     public ActorContext getCurrentActor() {
@@ -44,8 +41,8 @@ public class SecurityActorContextAdapter implements ActorContextPort {
                     "AUTHENTICATED_USER"
             );
             String role = firstNonBlank(
-                    jwt.getClaimAsString("role"),
                     extractRoleFromAuthorities(authentication),
+                    jwt.getClaimAsString("role"),
                     "ANALISTA"
             );
             return ActorContext.user(userId, userName, role, ipAddress);
@@ -62,28 +59,7 @@ public class SecurityActorContextAdapter implements ActorContextPort {
     }
 
     private String resolveClientIpAddress() {
-        return currentHttpRequest()
-                .flatMap(request -> extractForwardedIp(request).or(() -> extractRemoteAddr(request)))
-                .orElse(DEFAULT_IP_ADDRESS);
-    }
-
-    private Optional<HttpServletRequest> currentHttpRequest() {
-        return Optional.ofNullable(RequestContextHolder.getRequestAttributes())
-                .filter(ServletRequestAttributes.class::isInstance)
-                .map(ServletRequestAttributes.class::cast)
-                .map(ServletRequestAttributes::getRequest);
-    }
-
-    private Optional<String> extractForwardedIp(HttpServletRequest request) {
-        return Optional.ofNullable(request.getHeader(FORWARDED_FOR_HEADER))
-                .map(header -> header.split(",")[0].trim())
-                .filter(ip -> !ip.isBlank());
-    }
-
-    private Optional<String> extractRemoteAddr(HttpServletRequest request) {
-        return Optional.ofNullable(request.getRemoteAddr())
-                .map(String::trim)
-                .filter(ip -> !ip.isBlank());
+        return ClientAddress.current().orElse(DEFAULT_IP_ADDRESS);
     }
 
     private String extractRoleFromAuthorities(Authentication authentication) {

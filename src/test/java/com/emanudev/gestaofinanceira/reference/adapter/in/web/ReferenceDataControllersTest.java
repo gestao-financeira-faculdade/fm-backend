@@ -112,19 +112,19 @@ class ReferenceDataControllersTest {
 
     @Test
     void shouldCreateAndListCounterparties() throws Exception {
-        Counterparty counterparty = Counterparty.create("AWS Brasil", "AWS", "12345678000199", CounterpartyType.SUPPLIER, FIXED_INSTANT);
-        when(createCounterpartyUseCase.execute("AWS Brasil", "AWS", "12345678000199", CounterpartyType.SUPPLIER))
+        Counterparty counterparty = Counterparty.create("AWS Brasil", "AWS", "12345678000195", CounterpartyType.SUPPLIER, FIXED_INSTANT);
+        when(createCounterpartyUseCase.execute("AWS Brasil", "AWS", "12345678000195", CounterpartyType.SUPPLIER))
                 .thenReturn(counterparty);
         when(listCounterpartiesUseCase.execute()).thenReturn(List.of(counterparty));
 
         mockMvc.perform(post("/v1/counterparties")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"legalName\":\"AWS Brasil\",\"tradeName\":\"AWS\",\"taxId\":\"12345678000199\",\"counterpartyType\":\"SUPPLIER\"}"))
+                        .content("{\"legalName\":\"AWS Brasil\",\"tradeName\":\"AWS\",\"taxId\":\"12345678000195\",\"counterpartyType\":\"SUPPLIER\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.legalName").value("AWS Brasil"));
 
         mockMvc.perform(get("/v1/counterparties"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].taxId").value("12345678000199"));
+                .andExpect(jsonPath("$[0].taxId").value("12345678000195"));
     }
 }

@@ -29,11 +29,14 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class CreateFinancialEntryUseCase {
+
+    public static final String IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED";
 
     private final FinancialEntryRepositoryPort entryRepository;
     private final FinancialAccountRepositoryPort accountRepository;
@@ -97,6 +100,13 @@ public class CreateFinancialEntryUseCase {
         if (command.idempotencyKey() != null && !command.idempotencyKey().isBlank()) {
             Optional<FinancialEntry> existing = entryRepository.findByIdempotencyKey(command.idempotencyKey().trim());
             if (existing.isPresent()) {
+                if (!isSameRequest(existing.get(), command)) {
+                    throw new BusinessRuleViolationException(
+                            IDEMPOTENCY_KEY_REUSED,
+                            "Idempotency-Key was already used for a different request"
+                    );
+                }
+                auditTrailPort.skipAuditForCurrentAction();
                 return existing.get();
             }
         }
@@ -134,6 +144,22 @@ public class CreateFinancialEntryUseCase {
         FinancialEntry saved = entryRepository.save(entry);
         auditTrailPort.recordTransition("FINANCIAL_ENTRY", saved.id(), AuditAction.CREATE, null, saved);
         return saved;
+    }
+
+    private static boolean isSameRequest(FinancialEntry original, CreateEntryCommand command) {
+        LocalDate requestedCompetence = command.competenceDate() != null ? command.competenceDate() : command.dueDate();
+        return Objects.equals(original.entryType(), command.entryType())
+                && Objects.equals(original.originalAmount(), command.originalAmount())
+                && Objects.equals(original.dueDate(), command.dueDate())
+                && Objects.equals(original.competenceDate(), requestedCompetence)
+                && Objects.equals(original.categoryId(), command.categoryId())
+                && Objects.equals(original.counterpartyId(), command.counterpartyId())
+                && (command.accountId() == null || Objects.equals(original.accountId(), command.accountId()))
+                && Objects.equals(trimmed(original.description()), trimmed(command.description()));
+    }
+
+    private static String trimmed(String value) {
+        return value == null ? null : value.trim();
     }
 
     private UUID resolveAccountId(UUID requestedAccountId) {

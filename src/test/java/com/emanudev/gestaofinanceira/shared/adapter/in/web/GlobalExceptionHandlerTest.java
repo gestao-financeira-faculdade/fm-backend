@@ -7,6 +7,9 @@ import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolati
 import org.springframework.test.util.ReflectionTestUtils;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
+import com.emanudev.gestaofinanceira.shared.domain.exception.ServiceUnavailableException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -97,5 +100,30 @@ class GlobalExceptionHandlerTest {
 
         assertThat(forbidden.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
         assertThat(forbidden.getProperties()).containsEntry("errorCode", "ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("DEF-07/21/22: upload grande, conflito no banco, serviço fora e erro inesperado saem como ProblemDetail")
+    void shouldMapInfrastructureFailuresToProblemDetail() {
+        ProblemDetail upload = handler.handleUploadTooLarge(new MaxUploadSizeExceededException(10_485_760L), request);
+        ProblemDetail conflito = handler.handleDataIntegrityViolation(
+                new DataIntegrityViolationException("duplicate key", new RuntimeException("uq_financial_accounts_name_ci")),
+                request
+        );
+        ProblemDetail indisponivel = handler.handleServiceUnavailable(
+                new ServiceUnavailableException("RISK_ENGINE_UNAVAILABLE", "engine down"),
+                request
+        );
+        ProblemDetail inesperado = handler.handleUnexpected(new IllegalStateException("boom"), request);
+
+        assertThat(upload.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY.value());
+        assertThat(upload.getProperties()).containsEntry("errorCode", "ATTACHMENT_TOO_LARGE");
+        assertThat(conflito.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+        assertThat(conflito.getProperties()).containsEntry("errorCode", "DATA_INTEGRITY_VIOLATION");
+        assertThat(indisponivel.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+        assertThat(indisponivel.getProperties()).containsEntry("errorCode", "RISK_ENGINE_UNAVAILABLE");
+        assertThat(inesperado.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
+        assertThat(inesperado.getDetail()).doesNotContain("boom");
+        assertThat(inesperado.getProperties()).containsEntry("traceId", "trace-abc-123");
     }
 }

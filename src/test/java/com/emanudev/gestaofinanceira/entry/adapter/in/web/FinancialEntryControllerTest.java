@@ -46,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -119,6 +120,53 @@ class FinancialEntryControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(entry.id().toString()))
                 .andExpect(jsonPath("$.description").value("Fatura Cloud"));
+    }
+
+    @Test
+    void shouldRejectAmountWithMoreThanTwoDecimalsInsteadOfRounding() throws Exception {
+        mockMvc.perform(post("/v1/entries")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody("10.555", "2026-11-15", "2026-10-01")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.originalAmount").exists());
+
+        verify(createUseCase, never()).execute(any());
+    }
+
+    @Test
+    void shouldRejectDueDateBeforeCompetenceDate() throws Exception {
+        mockMvc.perform(post("/v1/entries")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody("100.00", "2026-09-30", "2026-10-01")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.dueDateOnOrAfterCompetenceDate").exists());
+
+        verify(createUseCase, never()).execute(any());
+    }
+
+    @Test
+    void shouldRejectIdempotencyKeyLongerThanColumn() throws Exception {
+        mockMvc.perform(post("/v1/entries")
+                        .header("Idempotency-Key", "k".repeat(101))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody("100.00", "2026-11-15", "2026-10-01")))
+                .andExpect(status().isBadRequest());
+
+        verify(createUseCase, never()).execute(any());
+    }
+
+    private static String createBody(String amount, String dueDate, String competenceDate) {
+        return """
+                {
+                  "description": "Fatura Cloud",
+                  "entryType": "PAYABLE",
+                  "originalAmount": %s,
+                  "currency": "BRL",
+                  "dueDate": "%s",
+                  "competenceDate": "%s",
+                  "categoryId": "0192c8a4-0000-7000-8000-000000000020"
+                }
+                """.formatted(amount, dueDate, competenceDate);
     }
 
     @Test
@@ -258,6 +306,21 @@ class FinancialEntryControllerTest {
                         .content("{\"reason\":\"Serviço cancelado\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void shouldRejectCancellationReasonLongerThanColumnInBodyOrQuery() throws Exception {
+        UUID id = UUID.randomUUID();
+        String longReason = "m".repeat(501);
+
+        mockMvc.perform(post("/v1/entries/{id}/cancel", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"" + longReason + "\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/v1/entries/{id}/cancel", id).param("reason", longReason))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(cancelUseCase);
     }
 
     private static FinancialEntry sampleEntry() {

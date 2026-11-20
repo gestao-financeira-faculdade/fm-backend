@@ -43,7 +43,7 @@ public record Counterparty(
                 UUID.randomUUID(),
                 legalName,
                 tradeName,
-                taxId,
+                TaxId.normalizeAndValidate(taxId),
                 counterpartyType,
                 true,
                 timestamp,

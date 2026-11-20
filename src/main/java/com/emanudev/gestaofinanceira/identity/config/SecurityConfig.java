@@ -5,6 +5,8 @@ import com.emanudev.gestaofinanceira.identity.application.port.out.AccessTokenBl
 import com.emanudev.gestaofinanceira.identity.application.port.out.UserRepositoryPort;
 import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import com.emanudev.gestaofinanceira.shared.adapter.in.web.CorrelationMdcFilter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URI;
@@ -12,12 +14,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import org.slf4j.MDC;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
@@ -196,6 +201,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .authenticationEntryPoint((request, response, authException) -> writeProblemJson(
+                                request,
                                 response,
                                 HttpServletResponse.SC_UNAUTHORIZED,
                                 unauthorizedTypeUri,
@@ -204,6 +210,7 @@ public class SecurityConfig {
                                 "UNAUTHORIZED"
                         ))
                         .accessDeniedHandler((request, response, accessDeniedException) -> writeProblemJson(
+                                request,
                                 response,
                                 HttpServletResponse.SC_FORBIDDEN,
                                 forbiddenTypeUri,
@@ -214,6 +221,7 @@ public class SecurityConfig {
                 )
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> writeProblemJson(
+                                request,
                                 response,
                                 HttpServletResponse.SC_UNAUTHORIZED,
                                 unauthorizedTypeUri,
@@ -222,6 +230,7 @@ public class SecurityConfig {
                                 "UNAUTHORIZED"
                         ))
                         .accessDeniedHandler((request, response, accessDeniedException) -> writeProblemJson(
+                                request,
                                 response,
                                 HttpServletResponse.SC_FORBIDDEN,
                                 forbiddenTypeUri,
@@ -235,6 +244,7 @@ public class SecurityConfig {
     }
 
     private static void writeProblemJson(
+            HttpServletRequest request,
             HttpServletResponse response,
             int status,
             URI typeUri,
@@ -242,12 +252,24 @@ public class SecurityConfig {
             String detail,
             String errorCode
     ) throws IOException {
+        if (status == HttpServletResponse.SC_UNAUTHORIZED) {
+            response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer realm=\"gestao-financeira\"");
+        }
+        String traceId = Optional.ofNullable(MDC.get("traceId"))
+                .or(() -> Optional.ofNullable(MDC.get(CorrelationMdcFilter.MDC_CORRELATION_ID)))
+                .orElse("N/A");
         response.setStatus(status);
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.getWriter().write(
-                "{\"type\":\"%s\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\",\"errorCode\":\"%s\",\"error_code\":\"%s\"}"
-                        .formatted(typeUri, title, status, detail, errorCode, errorCode)
+                ("{\"type\":\"%s\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\",\"instance\":\"%s\","
+                        + "\"errorCode\":\"%s\",\"error_code\":\"%s\",\"timestamp\":\"%s\",\"traceId\":\"%s\"}")
+                        .formatted(typeUri, title, status, detail, jsonSafe(request.getRequestURI()), errorCode, errorCode,
+                                Instant.now(), jsonSafe(traceId))
         );
+    }
+
+    private static String jsonSafe(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

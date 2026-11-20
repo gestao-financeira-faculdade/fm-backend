@@ -161,7 +161,8 @@ class AuthControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty())
-                .andExpect(jsonPath("$.expiresIn").value(900))
+                .andExpect(jsonPath("$.expiresInSeconds").value(900))
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.user.email").value("admin@gestaofinanceira.com"))
                 .andExpect(jsonPath("$.user.role").value("ADMIN"));
     }
@@ -180,14 +181,14 @@ class AuthControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/users/me deve retornar 401 sem token e 200 com token JWT válido")
+    @DisplayName("GET /api/v1/auth/me deve retornar 401 sem token e 200 com token JWT válido")
     void shouldProtectUsersMeAndReturnProfileWhenAuthenticated() throws Exception {
-        mockMvc.perform(get("/v1/users/me"))
+        mockMvc.perform(get("/v1/auth/me"))
                 .andExpect(status().isUnauthorized());
 
         String token = tokenProvider.issueAccessToken(analistaUser).accessToken();
 
-        mockMvc.perform(get("/v1/users/me")
+        mockMvc.perform(get("/v1/auth/me")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(analistaUser.id().toString()))
@@ -349,11 +350,11 @@ class AuthControllerIntegrationTest {
                         .content("{}"))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/v1/users/me").header("Authorization", "Bearer " + sessaoA.get("accessToken")))
+        mockMvc.perform(get("/v1/auth/me").header("Authorization", "Bearer " + sessaoA.get("accessToken")))
                 .andExpect(status().isUnauthorized());
         refresh(sessaoA.get("refreshToken")).andExpect(status().isUnauthorized());
 
-        mockMvc.perform(get("/v1/users/me").header("Authorization", "Bearer " + sessaoB.get("accessToken")))
+        mockMvc.perform(get("/v1/auth/me").header("Authorization", "Bearer " + sessaoB.get("accessToken")))
                 .andExpect(status().isOk());
         refresh(sessaoB.get("refreshToken")).andExpect(status().isOk());
     }

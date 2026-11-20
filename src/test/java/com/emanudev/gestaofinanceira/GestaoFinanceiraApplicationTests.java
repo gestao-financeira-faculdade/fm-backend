@@ -1,5 +1,7 @@
 package com.emanudev.gestaofinanceira;
 
+import com.emanudev.gestaofinanceira.shared.domain.Money;
+import com.emanudev.gestaofinanceira.shared.domain.Percentage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,4 +40,9 @@ class GestaoFinanceiraApplicationTests {
         assertThat(jsonMapper.isEnabled(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)).isTrue();
     }
 
+    @Test
+    void shouldSerializeValueObjectsWithoutDerivedFlags() {
+        assertThat(jsonMapper.writeValueAsString(Money.brl("10.00"))).isEqualTo("{\"amount\":10.00,\"currency\":\"BRL\"}");
+        assertThat(jsonMapper.writeValueAsString(Percentage.of("2.50"))).doesNotContain("zero").doesNotContain("positive");
+    }
 }

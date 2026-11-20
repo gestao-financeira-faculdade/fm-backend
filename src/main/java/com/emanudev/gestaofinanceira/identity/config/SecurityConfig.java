@@ -157,7 +157,7 @@ public class SecurityConfig {
 
                         // Authenticated identity endpoints
                         .requestMatchers(HttpMethod.POST, "/v1/auth/logout").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/v1/users/me").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/v1/auth/me").authenticated()
 
                         // Audit logs: strictly ADMIN and AUDITOR (ANALISTA blocked with 403)
                         .requestMatchers("/v1/audit-logs", "/v1/audit-logs/**").hasAnyRole("ADMIN", "AUDITOR")

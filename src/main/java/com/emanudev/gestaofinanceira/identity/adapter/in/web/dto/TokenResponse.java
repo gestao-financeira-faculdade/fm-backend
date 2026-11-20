@@ -4,15 +4,20 @@ import com.emanudev.gestaofinanceira.identity.application.port.in.Authentication
 
 public record TokenResponse(
         String accessToken,
+        String tokenType,
+        long expiresInSeconds,
         String refreshToken,
-        long expiresIn,
         UserSummaryResponse user
 ) {
+
+    public static final String BEARER = "Bearer";
+
     public static TokenResponse from(AuthenticationResult result) {
         return new TokenResponse(
                 result.accessToken(),
-                result.refreshToken(),
+                BEARER,
                 result.expiresIn(),
+                result.refreshToken(),
                 UserSummaryResponse.from(result.user())
         );
     }

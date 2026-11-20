@@ -19,6 +19,7 @@ public record FinancialEntryLineageNode(
         LocalDate settlementDate,
         BigDecimal originalAmount,
         BigDecimal settledAmount,
+        BigDecimal outstandingAmount,
         String currency,
         Instant createdAt
 ) {

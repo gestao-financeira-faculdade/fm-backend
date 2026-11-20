@@ -225,7 +225,7 @@ class FinancialEntryTest {
     }
 
     @Test
-    @DisplayName("Should enforce fiscal attachment lock for PAYABLE > 5000.00 and block split bypass via rootOriginalAmount")
+    @DisplayName("Should enforce fiscal attachment lock for PAYABLE >= 5000.00 and block split bypass via rootOriginalAmount")
     void shouldEnforceFiscalAttachmentLockAbove5000AndBlockSplitBypass() {
         FinancialEntry highValueEntry = FinancialEntry.create(
                 "idem-high",
@@ -371,5 +371,76 @@ class FinancialEntryTest {
                 TODAY,
                 NOW
         )).isInstanceOf(BusinessRuleViolationException.class);
+    }
+
+    @Test
+    @DisplayName("Should require fiscal attachment for PAYABLE of exactly 5000.00 and not for 4999.99")
+    void shouldRequireFiscalAttachmentFromExactlyFiveThousand() {
+        FinancialEntry atThreshold = payable("5000.00");
+        assertThatThrownBy(() -> settleWithoutAttachment(atThreshold, SettlementCommand.full(Money.brl("5000.00"), TODAY)))
+                .isInstanceOf(FiscalAttachmentRequiredException.class)
+                .extracting(ex -> ((FiscalAttachmentRequiredException) ex).getErrorCode())
+                .isEqualTo("MISSING_FISCAL_ATTACHMENT");
+
+        FinancialEntry belowThreshold = payable("4999.99");
+        SettlementOutcome outcome = settleWithoutAttachment(belowThreshold, SettlementCommand.full(Money.brl("4999.99"), TODAY));
+        assertThat(outcome.settledEntry().status()).isEqualTo(EntryStatus.PAID);
+    }
+
+    @Test
+    @DisplayName("Should reject settlement dated in the future")
+    void shouldRejectFutureSettlementDate() {
+        FinancialEntry entry = payable("1000.00");
+
+        assertThatThrownBy(() -> settleWithoutAttachment(entry, SettlementCommand.full(Money.brl("1000.00"), TODAY.plusDays(1))))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .extracting(ex -> ((BusinessRuleViolationException) ex).getErrorCode())
+                .isEqualTo("INVALID_SETTLEMENT_DATE");
+    }
+
+    @Test
+    @DisplayName("Should reject underpayment when partial settlement is not allowed")
+    void shouldRejectUnderpaymentWithoutPartialAllowed() {
+        FinancialEntry entry = payable("1000.00");
+
+        assertThatThrownBy(() -> settleWithoutAttachment(entry, SettlementCommand.full(Money.brl("400.00"), TODAY)))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .extracting(ex -> ((BusinessRuleViolationException) ex).getErrorCode())
+                .isEqualTo("UNDERPAYMENT_REQUIRES_SPLIT");
+    }
+
+    @Test
+    @DisplayName("Should expose outstanding amount as the original amount while open and zero once settled or cancelled")
+    void shouldExposeOutstandingAmountByStatus() {
+        FinancialEntry open = payable("1000.00");
+        assertThat(open.outstandingAmount()).isEqualTo(Money.brl("1000.00"));
+
+        SettlementOutcome partial = settleWithoutAttachment(open, SettlementCommand.partialWithSplit(Money.brl("400.00"), TODAY));
+        assertThat(partial.settledEntry().outstandingAmount()).isEqualTo(Money.zeroBrl());
+        assertThat(partial.residualChildEntry().orElseThrow().outstandingAmount()).isEqualTo(Money.brl("600.00"));
+
+        FinancialEntry cancelled = payable("1000.00").cancel("Lançamento duplicado", ACTOR_ID, NOW);
+        assertThat(cancelled.outstandingAmount()).isEqualTo(Money.zeroBrl());
+    }
+
+    private static FinancialEntry payable(String amount) {
+        return FinancialEntry.create(
+                null,
+                ACCOUNT_ID,
+                CATEGORY_ID,
+                COUNTERPARTY_ID,
+                EntryType.PAYABLE,
+                "Fornecedor",
+                TODAY,
+                TODAY.plusDays(10),
+                Money.brl(amount),
+                ACTOR_ID,
+                TODAY,
+                NOW
+        );
+    }
+
+    private static SettlementOutcome settleWithoutAttachment(FinancialEntry entry, SettlementCommand command) {
+        return entry.settle(command, false, "Fornecedores Operacionais", entry.originalAmount(), 0, TODAY, NOW);
     }
 }

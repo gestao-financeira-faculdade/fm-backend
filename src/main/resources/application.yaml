@@ -26,6 +26,9 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
   logging:
     structured:
       format:

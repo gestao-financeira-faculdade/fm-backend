@@ -23,6 +23,7 @@ public record SettlementResponse(
         String currency,
         long version,
         boolean hasResidualChild,
+        UUID residualEntryId,
         FinancialEntryResponse settledEntry,
         FinancialEntryResponse residualChildEntry
 ) {
@@ -47,6 +48,7 @@ public record SettlementResponse(
                 settledEntry.currency(),
                 settledEntry.version(),
                 residualChildEntry != null,
+                residualChildEntry != null ? residualChildEntry.id() : null,
                 settledEntry,
                 residualChildEntry
         );

@@ -79,7 +79,7 @@ public interface FinancialEntryControllerOpenApi {
 
     @Operation(
             summary = "Listar lançamentos financeiros com filtros e paginação",
-            description = "Consulta lançamentos filtrados por tipo (PAYABLE/RECEIVABLE), status (PENDING/OVERDUE/SETTLED/CANCELLED), categoria, conta financeira, período de vencimento e busca textual."
+            description = "Consulta lançamentos filtrados por tipo (PAYABLE/RECEIVABLE), status (PENDING/OVERDUE/PAID/RECEIVED/CANCELLED), categoria, conta financeira, período de vencimento e busca textual."
     )
     @ApiResponses({
             @ApiResponse(
@@ -92,7 +92,7 @@ public interface FinancialEntryControllerOpenApi {
     ResponseEntity<PagedResult<FinancialEntrySummaryView>> listEntries(
             @Parameter(description = "Tipo do lançamento (PAYABLE ou RECEIVABLE)")
             @RequestParam(required = false) EntryType entryType,
-            @Parameter(description = "Status do lançamento (PENDING, OVERDUE, SETTLED, CANCELLED)")
+            @Parameter(description = "Status do lançamento (PENDING, OVERDUE, PAID, RECEIVED, CANCELLED)")
             @RequestParam(required = false) EntryStatus status,
             @Parameter(description = "UUID da categoria financeira")
             @RequestParam(required = false) UUID categoryId,
@@ -134,13 +134,18 @@ public interface FinancialEntryControllerOpenApi {
 
     @Operation(
             summary = "Liquidar (dar baixa em) lançamento financeiro",
-            description = "Realiza a liquidação total ou parcial de um lançamento PENDING ou OVERDUE. Quando o valor principal liquidado é menor que o original e createResidualEntryOnUnderpayment=true, gera automaticamente um lançamento filho residual (split). Exige anexo fiscal para valores acima de R$ 5.000,00 ou categorias com obrigatoriedade."
+            description = "Realiza a liquidação total ou parcial de um lançamento PENDING ou OVERDUE. Quando paidAmount é menor que o valor original e allowPartial=true, gera automaticamente um lançamento filho residual (split); com allowPartial=false a baixa a menor é recusada. expectedVersion deve ser a versão atual do lançamento (lock otimista). Exige anexo fiscal para lançamentos a pagar a partir de R$ 5.000,00 ou em categorias com obrigatoriedade."
     )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
                     description = "Baixa realizada com sucesso (incluindo eventual lançamento residual filho)",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = SettlementResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Corpo ausente, malformado, com campo desconhecido ou sem paidAmount/expectedVersion",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             ),
             @ApiResponse(
                     responseCode = "404",
@@ -154,7 +159,7 @@ public interface FinancialEntryControllerOpenApi {
             ),
             @ApiResponse(
                     responseCode = "422",
-                    description = "Violação de regra de negócio (ex.: falta de anexo fiscal obrigatório ou transição de status inválida)",
+                    description = "Violação de regra de negócio (ex.: MISSING_FISCAL_ATTACHMENT, UNDERPAYMENT_REQUIRES_SPLIT, INVALID_SETTLEMENT_DATE ou transição de status inválida)",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             )
     })
@@ -162,8 +167,8 @@ public interface FinancialEntryControllerOpenApi {
     ResponseEntity<SettlementResponse> settleEntry(
             @Parameter(description = "UUID do lançamento financeiro", required = true)
             @PathVariable UUID id,
-            @RequestBody(description = "Parâmetros da liquidação (valor, descontos, juros, multa e flag de resíduo)", required = false)
-            @org.springframework.web.bind.annotation.RequestBody(required = false) SettleFinancialEntryRequest request
+            @RequestBody(description = "Parâmetros da liquidação (valor pago, descontos, juros, multa, permissão de baixa parcial e versão esperada)", required = true)
+            @Valid @org.springframework.web.bind.annotation.RequestBody SettleFinancialEntryRequest request
     );
 
     @Operation(

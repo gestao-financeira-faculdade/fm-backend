@@ -207,6 +207,14 @@ public record FinancialEntry(
             );
         }
 
+        if (today != null && command.settlementDate().isAfter(today)) {
+            throw new BusinessRuleViolationException(
+                    "INVALID_SETTLEMENT_DATE",
+                    "Settlement date (%s) must not be in the future (today is %s)"
+                            .formatted(command.settlementDate(), today)
+            );
+        }
+
         Money settledPrincipal = command.settledPrincipalAmount();
         if (!settledPrincipal.isPositive() || settledPrincipal.isGreaterThan(originalAmount)) {
             throw new BusinessRuleViolationException(
@@ -269,7 +277,7 @@ public record FinancialEntry(
         if (!command.createResidualEntryOnUnderpayment()) {
             throw new BusinessRuleViolationException(
                     "UNDERPAYMENT_REQUIRES_SPLIT",
-                    "Underpayment requires createResidualEntryOnUnderpayment=true to generate residual split entry"
+                    "Paid amount is lower than the outstanding amount: partial settlement must be explicitly allowed to generate the residual split entry"
             );
         }
 
@@ -350,14 +358,18 @@ public record FinancialEntry(
                 || (categoryName != null && "impostos".equalsIgnoreCase(categoryName.trim()));
 
         Money threshold = Money.of(FISCAL_ATTACHMENT_THRESHOLD, originalAmount.currency());
-        boolean exceedsThreshold = originalAmount.isGreaterThan(threshold)
-                || (rootOriginalAmount != null && rootOriginalAmount.isGreaterThan(threshold));
+        boolean reachesThreshold = originalAmount.isGreaterThanOrEqual(threshold)
+                || (rootOriginalAmount != null && rootOriginalAmount.isGreaterThanOrEqual(threshold));
 
-        if ((isTaxCategory || exceedsThreshold) && attachmentCount <= 0) {
+        if ((isTaxCategory || reachesThreshold) && attachmentCount <= 0) {
             throw new FiscalAttachmentRequiredException(
-                    "Fiscal attachment (PDF, JPG or PNG) is mandatory for PAYABLE entries in 'Impostos' category or with original/root amount above 5000.00"
+                    "Fiscal attachment (PDF, JPG or PNG) is mandatory for PAYABLE entries in 'Impostos' category or with original/root amount of 5000.00 or more"
             );
         }
+    }
+
+    public Money outstandingAmount() {
+        return status.isOpen() ? originalAmount : Money.zero(originalAmount.currency());
     }
 
     public FinancialEntry cancel(String reason, UUID actorId, Instant now) {

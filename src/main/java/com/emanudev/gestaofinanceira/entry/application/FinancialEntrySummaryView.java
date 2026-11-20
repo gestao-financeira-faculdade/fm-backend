@@ -28,6 +28,7 @@ public record FinancialEntrySummaryView(
         LocalDate settlementDate,
         BigDecimal originalAmount,
         BigDecimal settledAmount,
+        BigDecimal outstandingAmount,
         BigDecimal discountAmount,
         BigDecimal interestAmount,
         BigDecimal lateFeeAmount,

@@ -22,6 +22,7 @@ import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 import com.emanudev.gestaofinanceira.shared.application.AuditTrailPort;
 import com.emanudev.gestaofinanceira.shared.domain.Money;
+import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -188,6 +190,35 @@ class FinancialEntryUseCasesTest {
                 eq(existing),
                 any()
         );
+    }
+
+    @Test
+    @DisplayName("Should reject settlement with 409 conflict when the expected version is stale")
+    void shouldRejectSettlementWithStaleExpectedVersion() {
+        FinancialEntry existing = FinancialEntry.create(
+                null,
+                activeAccount.id(),
+                operationalCategory.id(),
+                null,
+                EntryType.PAYABLE,
+                "Fornecedor TI",
+                TODAY,
+                TODAY.plusDays(5),
+                Money.brl("1000.00"),
+                UUID.randomUUID(),
+                TODAY,
+                FIXED_INSTANT
+        );
+        when(entryRepository.findById(existing.id())).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> settleFinancialEntryUseCase.execute(
+                existing.id(),
+                SettlementCommand.full(Money.brl("1000.00"), TODAY),
+                existing.version() + 1
+        )).isInstanceOf(ConcurrencyConflictException.class);
+
+        verify(entryRepository, never()).save(any());
+        verify(auditTrailPort, never()).recordTransition(any(), any(), any(), any(), any());
     }
 
     @Test

@@ -22,6 +22,7 @@ import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 import com.emanudev.gestaofinanceira.shared.application.AuditTrailPort;
 import com.emanudev.gestaofinanceira.shared.domain.Money;
+import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -148,6 +149,28 @@ class FinancialEntryUseCasesTest {
         FinancialEntry duplicateCall = createFinancialEntryUseCase.execute(command);
         assertThat(duplicateCall.id()).isEqualTo(created.id());
         verify(entryRepository, times(1)).save(any());
+        verify(auditTrailPort).skipAuditForCurrentAction();
+    }
+
+    @Test
+    @DisplayName("DEF-20: mesma Idempotency-Key com outro conteúdo é recusada com IDEMPOTENCY_KEY_REUSED")
+    void shouldRejectIdempotencyKeyReusedWithDifferentPayload() {
+        FinancialEntry original = FinancialEntry.create(
+                "idem-key-456", activeAccount.id(), operationalCategory.id(), null, EntryType.PAYABLE,
+                "Fatura Cloud", TODAY, TODAY.plusDays(10), Money.brl("1200.00"), null, TODAY, FIXED_INSTANT
+        );
+        CreateEntryCommand otherAmount = new CreateEntryCommand(
+                "idem-key-456", activeAccount.id(), operationalCategory.id(), null, EntryType.PAYABLE,
+                "Fatura Cloud", TODAY, TODAY.plusDays(10), Money.brl("9999.00")
+        );
+        when(entryRepository.findByIdempotencyKey("idem-key-456")).thenReturn(Optional.of(original));
+
+        assertThatThrownBy(() -> createFinancialEntryUseCase.execute(otherAmount))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .extracting("errorCode")
+                .isEqualTo(CreateFinancialEntryUseCase.IDEMPOTENCY_KEY_REUSED);
+        verify(entryRepository, never()).save(any());
+        verify(auditTrailPort, never()).skipAuditForCurrentAction();
     }
 
     @Test

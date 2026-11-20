@@ -23,10 +23,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class FinancialEntryWebMapper {
 
+    static final int MAX_IDEMPOTENCY_KEY_LENGTH = 100;
+    static final int MAX_CANCELLATION_REASON_LENGTH = 500;
+
     public CreateEntryCommand toCreateCommand(CreateFinancialEntryRequest request, String idempotencyKeyHeader) {
         String idempotencyKey = Optional.ofNullable(request.idempotencyKey())
                 .filter(k -> !k.isBlank())
                 .orElse(idempotencyKeyHeader);
+        if (idempotencyKey != null && idempotencyKey.trim().length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
+            throw new IllegalArgumentException(
+                    "Idempotency-Key must have at most " + MAX_IDEMPOTENCY_KEY_LENGTH + " characters");
+        }
 
         BigDecimal resolvedAmount = Optional.ofNullable(request.originalAmount()).orElse(request.amount());
         if (resolvedAmount == null) {
@@ -45,7 +52,7 @@ public class FinancialEntryWebMapper {
                 request.description(),
                 request.competenceDate(),
                 request.dueDate(),
-                Money.of(resolvedAmount, currency)
+                Money.ofIso(resolvedAmount, currency)
         );
     }
 
@@ -72,10 +79,15 @@ public class FinancialEntryWebMapper {
     public String resolveCancellationReason(CancelFinancialEntryRequest request, String reasonParam) {
         String bodyReason = Optional.ofNullable(request).map(CancelFinancialEntryRequest::reason).orElse(null);
         String bodyCancelReason = Optional.ofNullable(request).map(CancelFinancialEntryRequest::cancellationReason).orElse(null);
-        return Stream.of(bodyReason, bodyCancelReason, reasonParam)
+        String reason = Stream.of(bodyReason, bodyCancelReason, reasonParam)
                 .filter(val -> val != null && !val.isBlank())
                 .findFirst()
                 .orElse(reasonParam);
+        if (reason != null && reason.trim().length() > MAX_CANCELLATION_REASON_LENGTH) {
+            throw new IllegalArgumentException(
+                    "Cancellation reason must have at most " + MAX_CANCELLATION_REASON_LENGTH + " characters");
+        }
+        return reason;
     }
 
     public FinancialEntryResponse toResponse(FinancialEntry entry, GetFinancialEntryUseCase getFinancialEntryUseCase) {

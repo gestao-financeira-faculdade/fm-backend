@@ -62,6 +62,11 @@ public class AuditPersistenceAdapter implements AuditTrailPort, AuditLogReposito
 
     @Override
     @Transactional(propagation = Propagation.REQUIRED)
+    public void skipAuditForCurrentAction() {
+        AuditExecutionContext.markExplicitAuditRecorded();
+    }
+
+    @Override
     public void recordTransition(
             String entityType,
             UUID entityId,

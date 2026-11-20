@@ -23,7 +23,7 @@ public class ReferenceDataWebMapper {
                 .filter(c -> !c.isBlank())
                 .orElse(Money.DEFAULT_CURRENCY);
         BigDecimal balance = Optional.ofNullable(request.initialBalance()).orElse(BigDecimal.ZERO);
-        return Money.of(balance, currency);
+        return Money.ofIso(balance, currency);
     }
 
     public boolean isRequiresAttachmentAlways(CreateCategoryRequest request) {

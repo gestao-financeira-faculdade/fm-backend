@@ -197,7 +197,7 @@ public interface FinancialEntryControllerOpenApi {
             @Parameter(description = "UUID do lançamento financeiro", required = true)
             @PathVariable UUID id,
             @RequestBody(description = "Justificativa do cancelamento no corpo da requisição", required = false)
-            @org.springframework.web.bind.annotation.RequestBody(required = false) CancelFinancialEntryRequest request,
+            @Valid @org.springframework.web.bind.annotation.RequestBody(required = false) CancelFinancialEntryRequest request,
             @Parameter(description = "Justificativa do cancelamento via query parameter (alternativa ao corpo)")
             @RequestParam(required = false) String reason
     );
@@ -223,7 +223,7 @@ public interface FinancialEntryControllerOpenApi {
             @Parameter(description = "UUID do lançamento financeiro", required = true)
             @PathVariable UUID id,
             @RequestBody(description = "Justificativa do cancelamento lógico", required = false)
-            @org.springframework.web.bind.annotation.RequestBody(required = false) CancelFinancialEntryRequest request,
+            @Valid @org.springframework.web.bind.annotation.RequestBody(required = false) CancelFinancialEntryRequest request,
             @Parameter(description = "Justificativa do cancelamento via query parameter")
             @RequestParam(required = false) String reason
     );

@@ -19,6 +19,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import com.emanudev.gestaofinanceira.shared.adapter.out.persistence.LikePattern;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -199,11 +200,11 @@ public class JooqDashboardQueryAdapter implements DashboardQueryPort {
             condition = condition.and(dueDateField.le(effectiveFilter.dueDateTo()));
         }
         if (effectiveFilter.search() != null && !effectiveFilter.search().isBlank()) {
-            String pattern = "%" + effectiveFilter.search().trim().toLowerCase(Locale.ROOT) + "%";
+            String pattern = "%" + LikePattern.escape(effectiveFilter.search().trim().toLowerCase(Locale.ROOT)) + "%";
             condition = condition.and(
-                    DSL.lower(descriptionField).like(pattern)
-                            .or(DSL.lower(DSL.coalesce(counterpartyNameField, "")).like(pattern))
-                            .or(DSL.lower(categoryNameField).like(pattern))
+                    DSL.lower(descriptionField).like(pattern, LikePattern.ESCAPE)
+                            .or(DSL.lower(DSL.coalesce(counterpartyNameField, "")).like(pattern, LikePattern.ESCAPE))
+                            .or(DSL.lower(categoryNameField).like(pattern, LikePattern.ESCAPE))
             );
         }
 

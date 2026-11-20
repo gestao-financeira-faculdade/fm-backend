@@ -3,6 +3,7 @@ package com.emanudev.gestaofinanceira.audit.adapter.out.persistence;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
+import com.emanudev.gestaofinanceira.shared.domain.Money;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -125,5 +126,29 @@ class AuditPersistenceAdapterTest {
         assertThat(saved.getPreviousState()).isNull();
         assertThat(saved.getNewState()).contains("\"status\":\"OVERDUE\"");
         assertThat(saved.getOccurredAt()).isEqualTo(FIXED_INSTANT);
+    }
+
+    @Test
+    void shouldSnapshotMoneyAsAmountAndCurrencyOnly() {
+        UUID entryId = UUID.fromString("0192c8a4-0000-7000-8000-000000000088");
+        when(actorContextPort.getCurrentActor()).thenReturn(ActorContext.system());
+
+        adapter.recordTransition(
+                "FINANCIAL_ENTRY",
+                entryId,
+                AuditAction.CREATE,
+                null,
+                Map.of("originalAmount", Money.brl("1000.00"))
+        );
+
+        ArgumentCaptor<AuditLogJpaEntity> captor = ArgumentCaptor.forClass(AuditLogJpaEntity.class);
+        verify(repository).save(captor.capture());
+
+        assertThat(captor.getValue().getNewState())
+                .contains("\"amount\":1000.00")
+                .contains("\"currency\":\"BRL\"")
+                .doesNotContain("zero")
+                .doesNotContain("positive")
+                .doesNotContain("negative");
     }
 }

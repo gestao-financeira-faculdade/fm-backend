@@ -1,6 +1,7 @@
 package com.emanudev.gestaofinanceira.simulation.adapter.in.web.dto;
 
 import com.emanudev.gestaofinanceira.simulation.domain.model.RiskSimulationResult;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -14,6 +15,7 @@ public record SimulationResponse(
         BigDecimal initialBalance,
         BigDecimal expectedDefaultRate,
         BigDecimal variableCostShockPct,
+        @JsonFormat(shape = JsonFormat.Shape.STRING)
         long randomSeed,
         BigDecimal var99,
         BigDecimal medianP50,

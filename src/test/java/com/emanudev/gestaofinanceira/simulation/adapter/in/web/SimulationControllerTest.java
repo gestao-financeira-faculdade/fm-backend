@@ -119,7 +119,34 @@ class SimulationControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void shouldSerializeRandomSeedAsStringToKeepPrecisionInJavaScript() throws Exception {
+        when(getLatestSimulationPort.getSimulationById(SIMULATION_ID)).thenReturn(sampleResult(8361509756792018453L));
+
+        mockMvc.perform(get("/v1/simulations/{id}", SIMULATION_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.randomSeed").value("8361509756792018453"));
+    }
+
+    @Test
+    void shouldAcceptRandomSeedSentAsString() throws Exception {
+        when(runRiskSimulationPort.runSimulation(any(StressScenarioParams.class))).thenReturn(sampleResult(8361509756792018453L));
+
+        mockMvc.perform(post("/v1/simulations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"randomSeed\":\"8361509756792018453\"}"))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<StressScenarioParams> captor = ArgumentCaptor.forClass(StressScenarioParams.class);
+        verify(runRiskSimulationPort).runSimulation(captor.capture());
+        assertThat(captor.getValue().randomSeed()).isEqualTo(8361509756792018453L);
+    }
+
     private static RiskSimulationResult sampleResult() {
+        return sampleResult(42L);
+    }
+
+    private static RiskSimulationResult sampleResult(long seed) {
         LocalDate referenceDate = LocalDate.of(2026, 10, 26);
         DailyPercentileBand band = new DailyPercentileBand(
                 1, referenceDate.plusDays(1),
@@ -128,7 +155,7 @@ class SimulationControllerTest {
         );
         return new RiskSimulationResult(
                 SIMULATION_ID, null, 30, 100_000, Money.brl("50000.00"),
-                Percentage.of("5.00"), Percentage.of("10.00"), 42L,
+                Percentage.of("5.00"), Percentage.of("10.00"), seed,
                 Money.brl("-500.00"), Money.brl("5000.00"), Percentage.of("2.5000"),
                 List.of(band), "JVM-Fallback-ParallelStream", 120L,
                 Instant.parse("2026-10-26T12:00:00Z")

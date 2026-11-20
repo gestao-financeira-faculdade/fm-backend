@@ -7,6 +7,7 @@ import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 import com.emanudev.gestaofinanceira.shared.application.AuditTrailPort;
+import com.emanudev.gestaofinanceira.shared.config.SharedDomainJacksonModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -44,7 +45,11 @@ public class AuditPersistenceAdapter implements AuditTrailPort, AuditLogReposito
         this.repository = repository;
         this.actorContextPort = actorContextPort;
         this.clock = clock;
-        this.objectMapper = objectMapper != null ? objectMapper : JsonMapper.builder().build();
+        this.objectMapper = snapshotMapper(objectMapper != null ? objectMapper : JsonMapper.builder().build());
+    }
+
+    private static ObjectMapper snapshotMapper(ObjectMapper base) {
+        return base.rebuild().addModule(new SharedDomainJacksonModule()).build();
     }
 
     public AuditPersistenceAdapter(

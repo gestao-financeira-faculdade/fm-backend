@@ -1,0 +1,55 @@
+server:
+  forward-headers-strategy: framework
+
+spring:
+  main:
+    keep-alive: true
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${DB_URL}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 0
+      idle-timeout: 60000
+  data:
+    redis:
+      url: ${REDIS_URL}
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  otlp:
+    metrics:
+      export:
+        enabled: ${OTLP_ENABLED:false}
+        url: ${OTLP_ENDPOINT:http://localhost:4318}/v1/metrics
+        headers:
+          Authorization: ${OTLP_AUTHORIZATION:}
+  tracing:
+    sampling:
+      probability: 1.0
+    export:
+      otlp:
+        enabled: ${OTLP_ENABLED:false}
+  logging:
+    export:
+      otlp:
+        enabled: ${OTLP_ENABLED:false}
+  opentelemetry:
+    resource-attributes:
+      "[deployment.environment.name]": prod
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+          headers:
+            Authorization: ${OTLP_AUTHORIZATION:}
+    logging:
+      export:
+        otlp:
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4318}/v1/logs
+          headers:
+            Authorization: ${OTLP_AUTHORIZATION:}

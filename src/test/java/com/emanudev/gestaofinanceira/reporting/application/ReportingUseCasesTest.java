@@ -3,6 +3,7 @@ package com.emanudev.gestaofinanceira.reporting.application;
 import com.emanudev.gestaofinanceira.reporting.application.strategy.ReportExportStrategy;
 import com.emanudev.gestaofinanceira.reporting.application.strategy.factory.ReportExportStrategyFactory;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
+import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -52,11 +53,14 @@ class ReportingUseCasesTest {
     }
 
     @Test
-    void shouldClampHistoryDaysToMaximumAllowed() {
+    void shouldClampHistoryDaysAndAnswer404ForUnknownSimulation() {
         GetUncertaintyConeUseCase useCase = new GetUncertaintyConeUseCase(dashboardQueryPort, FIXED_CLOCK);
         UUID simulationId = UUID.randomUUID();
+        when(dashboardQueryPort.fetchUncertaintyCone(TODAY, GetUncertaintyConeUseCase.MAX_HISTORY_DAYS, Optional.of(simulationId)))
+                .thenReturn(new UncertaintyConeResponse(List.of(), Optional.empty()));
 
-        useCase.execute(TODAY, 5_000, simulationId);
+        assertThatThrownBy(() -> useCase.execute(TODAY, 5_000, simulationId))
+                .isInstanceOf(ResourceNotFoundException.class);
 
         verify(dashboardQueryPort).fetchUncertaintyCone(
                 TODAY, GetUncertaintyConeUseCase.MAX_HISTORY_DAYS, Optional.of(simulationId)

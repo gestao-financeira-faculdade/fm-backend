@@ -1,5 +1,6 @@
 package com.emanudev.gestaofinanceira.reporting.application;
 
+import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Objects;
@@ -38,11 +39,15 @@ public class GetUncertaintyConeUseCase {
         int effectiveDays = (historyDays == null || historyDays <= 0)
                 ? DEFAULT_HISTORY_DAYS
                 : Math.min(historyDays, MAX_HISTORY_DAYS);
-        return dashboardQueryPort.fetchUncertaintyCone(
+        UncertaintyConeResponse cone = dashboardQueryPort.fetchUncertaintyCone(
                 effectiveDate,
                 effectiveDays,
                 Optional.ofNullable(simulationId)
         );
+        if (simulationId != null && cone.projectionCone().isEmpty()) {
+            throw new ResourceNotFoundException("RiskSimulationResult", simulationId);
+        }
+        return cone;
     }
 
     public UncertaintyConeResponse getUncertaintyCone(Integer historyDays, UUID simulationId) {

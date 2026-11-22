@@ -1,6 +1,5 @@
 package com.emanudev.gestaofinanceira.reporting.adapter.in.web.mapper;
 
-import com.emanudev.gestaofinanceira.reporting.adapter.in.web.dto.ExportReportRequest;
 import com.emanudev.gestaofinanceira.reporting.application.ExportedReport;
 import com.emanudev.gestaofinanceira.reporting.application.ReportExportFilter;
 import com.emanudev.gestaofinanceira.reporting.application.ReportExportFormat;
@@ -22,11 +21,6 @@ public class ReportExportWebMapper {
         return ReportExportFormat.fromString(format);
     }
 
-    public ReportExportFormat toFormat(String queryFormat, ExportReportRequest body) {
-        String effectiveFormat = firstNonBlank(body != null ? body.format() : null, queryFormat, "CSV");
-        return ReportExportFormat.fromString(effectiveFormat);
-    }
-
     public ReportExportFilter toFilter(
             String entryType,
             String status,
@@ -44,27 +38,6 @@ public class ReportExportWebMapper {
                 dueDateFrom,
                 dueDateTo,
                 search
-        );
-    }
-
-    public ReportExportFilter toFilter(
-            String entryType,
-            String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search,
-            ExportReportRequest body
-    ) {
-        return new ReportExportFilter(
-                firstNonBlank(body != null ? body.entryType() : null, entryType, null),
-                firstNonBlank(body != null ? body.status() : null, status, null),
-                body != null && body.categoryId() != null ? body.categoryId() : categoryId,
-                body != null && body.accountId() != null ? body.accountId() : accountId,
-                body != null && body.dueDateFrom() != null ? body.dueDateFrom() : dueDateFrom,
-                body != null && body.dueDateTo() != null ? body.dueDateTo() : dueDateTo,
-                firstNonBlank(body != null ? body.search() : null, search, null)
         );
     }
 

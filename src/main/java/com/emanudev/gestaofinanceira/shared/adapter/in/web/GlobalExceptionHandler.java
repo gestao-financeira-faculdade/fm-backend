@@ -3,6 +3,7 @@ package com.emanudev.gestaofinanceira.shared.adapter.in.web;
 import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
+import com.emanudev.gestaofinanceira.shared.domain.exception.PreconditionFailedException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.RateLimitExceededException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ServiceUnavailableException;
@@ -41,6 +42,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 
@@ -258,6 +260,11 @@ public class GlobalExceptionHandler {
         return Optional.empty();
     }
 
+    @ExceptionHandler(PreconditionFailedException.class)
+    public ProblemDetail handlePreconditionFailed(PreconditionFailedException ex, HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.PRECONDITION_FAILED, "Precondition Failed", ex.getMessage(), ex.getErrorCode(), request);
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ProblemDetail handleUploadTooLarge(MaxUploadSizeExceededException ex, HttpServletRequest request) {
         return buildProblemDetail(
@@ -320,8 +327,8 @@ public class GlobalExceptionHandler {
         );
     }
 
-    @ExceptionHandler(NoResourceFoundException.class)
-    public ProblemDetail handleNoResource(NoResourceFoundException ex, HttpServletRequest request) {
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ProblemDetail handleNoResource(Exception ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.NOT_FOUND, "Not Found", "Resource not found.", "NOT_FOUND", request);
     }
 

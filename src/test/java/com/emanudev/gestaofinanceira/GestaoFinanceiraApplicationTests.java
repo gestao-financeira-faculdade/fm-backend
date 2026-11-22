@@ -9,6 +9,7 @@ import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.DockerClientFactory;
 import tools.jackson.core.JacksonException;
@@ -26,6 +27,9 @@ class GestaoFinanceiraApplicationTests {
 
     @Autowired
     private JsonMapper jsonMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     static boolean isDockerAvailable() {
         try {
@@ -57,5 +61,12 @@ class GestaoFinanceiraApplicationTests {
         assertThat(jsonMapper.readValue("\"2026-12-31\"", LocalDate.class)).isEqualTo(LocalDate.of(2026, 12, 31));
         assertThat(jsonMapper.readValue("{\"randomSeed\":\"8361509756792018453\"}", RunSimulationRequest.class).randomSeed())
                 .isEqualTo(8361509756792018453L);
+    }
+
+    @Test
+    void shouldBlockTruncateOnAuditLogs() {
+        assertThatThrownBy(() -> jdbcTemplate.execute("TRUNCATE audit_logs"))
+                .rootCause()
+                .hasMessageContaining("audit_logs is append-only");
     }
 }

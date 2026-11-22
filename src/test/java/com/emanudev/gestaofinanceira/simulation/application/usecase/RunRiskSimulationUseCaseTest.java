@@ -155,4 +155,23 @@ class RunRiskSimulationUseCaseTest {
             return Optional.ofNullable(store.get(id));
         }
     }
+
+    @Test
+    @DisplayName("DEF-08: overflow ao converter valores para centavos vira 422, não 500")
+    void shouldTurnArithmeticOverflowIntoBusinessError() {
+        RunRiskSimulationUseCase overflowing = new RunRiskSimulationUseCase(
+                cashFlowProjectionPort,
+                (id, requestedBy, balance, date, params, items) -> {
+                    throw new ArithmeticException("Overflow");
+                },
+                repository,
+                () -> new ActorContext(ADMIN_ID, "admin@gestaofinanceira.com", "ADMIN", "127.0.0.1", "JUnit"),
+                Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC)
+        );
+
+        assertThatThrownBy(() -> overflowing.runSimulation(new StressScenarioParams(30, 100_000, Percentage.of(8.0), Percentage.of(15.0), 42L)))
+                .isInstanceOf(com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException.class)
+                .extracting("errorCode")
+                .isEqualTo("SIMULATION_AMOUNT_OUT_OF_RANGE");
+    }
 }

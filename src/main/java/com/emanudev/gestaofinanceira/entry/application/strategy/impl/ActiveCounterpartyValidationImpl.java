@@ -5,7 +5,6 @@ import com.emanudev.gestaofinanceira.entry.application.strategy.CreateEntryValid
 import com.emanudev.gestaofinanceira.reference.application.CounterpartyRepositoryPort;
 import com.emanudev.gestaofinanceira.reference.domain.Counterparty;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
-import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -24,7 +23,7 @@ public class ActiveCounterpartyValidationImpl implements CreateEntryValidationSt
         var counterpartyId = context.command().counterpartyId();
         if (counterpartyId != null) {
             Counterparty counterparty = counterpartyRepository.findById(counterpartyId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Counterparty", counterpartyId));
+                    .orElseThrow(() -> new BusinessRuleViolationException("COUNTERPARTY_NOT_FOUND", "Counterparty not found: " + counterpartyId));
             if (!counterparty.active()) {
                 throw new BusinessRuleViolationException(
                         "INACTIVE_COUNTERPARTY",

@@ -10,6 +10,8 @@ public record ExecutiveKpiResponse(
         Money consolidatedBalance,
         Money totalReceivableToday,
         Money totalPayableToday,
+        Money totalReceivableOverdue,
+        Money totalPayableOverdue,
         Percentage monthlyDelinquencyRatePct,
         LocalDate referenceDate,
         Instant generatedAt
@@ -19,6 +21,8 @@ public record ExecutiveKpiResponse(
         Objects.requireNonNull(consolidatedBalance, "consolidatedBalance must not be null");
         Objects.requireNonNull(totalReceivableToday, "totalReceivableToday must not be null");
         Objects.requireNonNull(totalPayableToday, "totalPayableToday must not be null");
+        Objects.requireNonNull(totalReceivableOverdue, "totalReceivableOverdue must not be null");
+        Objects.requireNonNull(totalPayableOverdue, "totalPayableOverdue must not be null");
         Objects.requireNonNull(monthlyDelinquencyRatePct, "monthlyDelinquencyRatePct must not be null");
         Objects.requireNonNull(referenceDate, "referenceDate must not be null");
         Objects.requireNonNull(generatedAt, "generatedAt must not be null");

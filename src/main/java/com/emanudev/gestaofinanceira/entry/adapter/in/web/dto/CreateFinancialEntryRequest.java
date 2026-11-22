@@ -1,6 +1,7 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.web.dto;
 
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.AssertTrue;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.emanudev.gestaofinanceira.entry.domain.EntryType;
@@ -20,10 +21,16 @@ public record CreateFinancialEntryRequest(
         @NotBlank @Size(max = 255) String description,
         LocalDate competenceDate,
         @NotNull LocalDate dueDate,
-        @Digits(integer = 17, fraction = 2) BigDecimal originalAmount,
-        @Digits(integer = 17, fraction = 2) BigDecimal amount,
+        @Positive @Digits(integer = 17, fraction = 2) BigDecimal originalAmount,
+        @Positive @Digits(integer = 17, fraction = 2) BigDecimal amount,
         String currency
 ) {
+
+    @JsonIgnore
+    @AssertTrue(message = "originalAmount is required")
+    public boolean isOriginalAmountPresent() {
+        return originalAmount != null || amount != null;
+    }
 
     @JsonIgnore
     @AssertTrue(message = "dueDate must not be before competenceDate")

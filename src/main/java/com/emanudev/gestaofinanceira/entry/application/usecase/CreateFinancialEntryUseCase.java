@@ -1,6 +1,7 @@
 package com.emanudev.gestaofinanceira.entry.application.usecase;
 
 import com.emanudev.gestaofinanceira.entry.application.CreateEntryCommand;
+import com.emanudev.gestaofinanceira.entry.application.CreateEntryResult;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntryRepositoryPort;
 import com.emanudev.gestaofinanceira.entry.application.strategy.CreateEntryValidationContext;
 import com.emanudev.gestaofinanceira.entry.application.strategy.CreateEntryValidationStrategy;
@@ -20,7 +21,6 @@ import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 import com.emanudev.gestaofinanceira.shared.application.AuditTrailPort;
 import com.emanudev.gestaofinanceira.shared.application.AuditedFinancialAction;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
-import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,7 +92,7 @@ public class CreateFinancialEntryUseCase {
 
     @Transactional
     @AuditedFinancialAction(action = AuditAction.CREATE, entityType = "FINANCIAL_ENTRY")
-    public FinancialEntry execute(CreateEntryCommand command) {
+    public CreateEntryResult execute(CreateEntryCommand command) {
         if (command == null) {
             throw new BusinessRuleViolationException("INVALID_ENTRY_COMMAND", "Create entry command must not be null");
         }
@@ -107,16 +107,16 @@ public class CreateFinancialEntryUseCase {
                     );
                 }
                 auditTrailPort.skipAuditForCurrentAction();
-                return existing.get();
+                return new CreateEntryResult(existing.get(), true);
             }
         }
 
         UUID resolvedAccountId = resolveAccountId(command.accountId());
         FinancialAccount account = accountRepository.findById(resolvedAccountId)
-                .orElseThrow(() -> new ResourceNotFoundException("FinancialAccount", resolvedAccountId));
+                .orElseThrow(() -> new BusinessRuleViolationException("ACCOUNT_NOT_FOUND", "Financial account not found: " + resolvedAccountId));
 
         Category category = categoryRepository.findById(command.categoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Category", command.categoryId()));
+                .orElseThrow(() -> new BusinessRuleViolationException("CATEGORY_NOT_FOUND", "Category not found: " + command.categoryId()));
 
         CreateEntryValidationContext validationContext = new CreateEntryValidationContext(command, account, category);
         validationStrategies.forEach(validation -> validation.execute(validationContext));
@@ -143,7 +143,7 @@ public class CreateFinancialEntryUseCase {
 
         FinancialEntry saved = entryRepository.save(entry);
         auditTrailPort.recordTransition("FINANCIAL_ENTRY", saved.id(), AuditAction.CREATE, null, saved);
-        return saved;
+        return new CreateEntryResult(saved, false);
     }
 
     private static boolean isSameRequest(FinancialEntry original, CreateEntryCommand command) {

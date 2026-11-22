@@ -117,7 +117,7 @@ public class JooqAuditQueryAdapter implements AuditLogQueryPort {
                 )
                 .from(T_AUDIT_LOGS)
                 .where(F_ENTITY_ID.eq(entryId))
-                .orderBy(F_OCCURRED_AT.desc(), F_ID.desc())
+                .orderBy(F_OCCURRED_AT.asc(), F_ID.asc())
                 .fetch(this::mapRecordToResponse);
     }
 

@@ -58,7 +58,6 @@ public class SecurityConfig {
 
     private static final String[] REFERENCE_DATA_ADMIN_ONLY = {
             "/v1/accounts", "/v1/accounts/**",
-            "/v1/financial-accounts", "/v1/financial-accounts/**",
             "/v1/categories", "/v1/categories/**"
     };
 
@@ -172,14 +171,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/v1/simulations", "/v1/simulations/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
                         .requestMatchers("/v1/simulations", "/v1/simulations/**").hasRole("ADMIN")
 
-                        // Reports & Dashboard: GET and POST /api/v1/reports/export allowed for ADMIN, ANALISTA, AUDITOR
-                        .requestMatchers(HttpMethod.GET, "/v1/dashboard/**", "/v1/reports/**", "/v1/entries/export/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
-                        .requestMatchers(HttpMethod.POST, "/v1/reports/export", "/v1/reports/export/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
+                        // Reports & Dashboard: read-only for ADMIN, ANALISTA, AUDITOR
+                        .requestMatchers(HttpMethod.GET, "/v1/dashboard/**", "/v1/reports/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
                         .requestMatchers("/v1/dashboard/**", "/v1/reports/**").hasAnyRole("ADMIN", "ANALISTA", "AUDITOR")
 
                         // Logical deletion (Soft Delete) of financial entries: strictly ADMIN
                         .requestMatchers(HttpMethod.DELETE, "/v1/entries", "/v1/entries/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/v1/entries/*/cancel").hasRole("ADMIN")
 
                         // Reference data (accounts and categories): strictly ADMIN
                         .requestMatchers(HttpMethod.POST, REFERENCE_DATA_ADMIN_ONLY).hasRole("ADMIN")

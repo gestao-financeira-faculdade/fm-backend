@@ -41,6 +41,12 @@ public record StressScenarioParams(
                     "Expected default rate must not be null"
             );
         }
+        if (randomSeed != null && randomSeed < 1L) {
+            throw new BusinessRuleViolationException(
+                    "INVALID_RANDOM_SEED",
+                    "Random seed must be a positive number, but got: " + randomSeed
+            );
+        }
         if (variableCostShockPct == null) {
             throw new BusinessRuleViolationException(
                     "INVALID_COST_SHOCK",

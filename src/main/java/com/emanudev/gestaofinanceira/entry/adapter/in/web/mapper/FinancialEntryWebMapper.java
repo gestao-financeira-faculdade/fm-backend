@@ -1,6 +1,5 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.web.mapper;
 
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CancelFinancialEntryRequest;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CreateFinancialEntryRequest;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.FinancialEntryResponse;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.SettleFinancialEntryRequest;
@@ -76,13 +75,7 @@ public class FinancialEntryWebMapper {
         return request.expectedVersion();
     }
 
-    public String resolveCancellationReason(CancelFinancialEntryRequest request, String reasonParam) {
-        String bodyReason = Optional.ofNullable(request).map(CancelFinancialEntryRequest::reason).orElse(null);
-        String bodyCancelReason = Optional.ofNullable(request).map(CancelFinancialEntryRequest::cancellationReason).orElse(null);
-        String reason = Stream.of(bodyReason, bodyCancelReason, reasonParam)
-                .filter(val -> val != null && !val.isBlank())
-                .findFirst()
-                .orElse(reasonParam);
+    public String validateCancellationReason(String reason) {
         if (reason != null && reason.trim().length() > MAX_CANCELLATION_REASON_LENGTH) {
             throw new IllegalArgumentException(
                     "Cancellation reason must have at most " + MAX_CANCELLATION_REASON_LENGTH + " characters");

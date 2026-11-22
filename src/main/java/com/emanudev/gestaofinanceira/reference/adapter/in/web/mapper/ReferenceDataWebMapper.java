@@ -12,6 +12,8 @@ import com.emanudev.gestaofinanceira.reference.domain.FinancialAccount;
 import com.emanudev.gestaofinanceira.shared.domain.Money;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
@@ -40,6 +42,13 @@ public class ReferenceDataWebMapper {
 
     public List<FinancialAccountResponse> toAccountResponseList(List<FinancialAccount> domains) {
         return domains.stream().map(FinancialAccountResponse::fromDomain).toList();
+    }
+
+    public List<FinancialAccountResponse> toAccountResponseList(List<FinancialAccount> domains, Map<UUID, BigDecimal> balances) {
+        return domains.stream()
+                .map(account -> FinancialAccountResponse.fromDomain(
+                        account, balances.getOrDefault(account.id(), account.initialBalance().amount())))
+                .toList();
     }
 
     public CategoryResponse toCategoryResponse(Category domain) {

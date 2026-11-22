@@ -359,9 +359,9 @@ Controlador: `SimulationControllerOpenApi` / `SimulationController`
   }
   ```
 - **Erros:**
-  - `400 INVALID_ARGUMENT`: percentual fora de 0 a 100.
+  - `400`: corpo malformado ou campo de tipo errado.
   - `403`: perfil sem permissão.
-  - `422`: `INVALID_SIMULATION_HORIZON` (diferente de 30, 60 ou 90); `INSUFFICIENT_SIMULATION_SCENARIOS`/`EXCESSIVE_SIMULATION_SCENARIOS`; `INVALID_RANDOM_SEED`; `SIMULATION_AMOUNT_OUT_OF_RANGE` (valores grandes demais para o cálculo em centavos).
+  - `422`: toda regra de parâmetro da simulação: `INVALID_SIMULATION_HORIZON` (diferente de 30, 60 ou 90); `INSUFFICIENT_SIMULATION_SCENARIOS`/`EXCESSIVE_SIMULATION_SCENARIOS`; `INVALID_DEFAULT_RATE`/`INVALID_COST_SHOCK` (percentual fora de 0 a 100); `INVALID_RANDOM_SEED`; `SIMULATION_AMOUNT_OUT_OF_RANGE` (valores grandes demais para o cálculo em centavos).
   - `503 RISK_ENGINE_UNAVAILABLE`: motor indisponível ou limite de simulações simultâneas esgotado.
 
 ### 5.2 `GET /api/v1/simulations/latest`

@@ -2,9 +2,10 @@ package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 
 import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CounterpartyResponse;
 import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.CreateCounterpartyRequest;
+import com.emanudev.gestaofinanceira.reference.adapter.in.web.dto.PatchCounterpartyRequest;
+import com.emanudev.gestaofinanceira.shared.application.PagedResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
@@ -13,15 +14,17 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @Tag(
         name = "Contrapartes (Clientes e Fornecedores)",
@@ -32,21 +35,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 public interface CounterpartyControllerOpenApi {
 
     @Operation(
-            summary = "Listar todas as contrapartes cadastradas",
-            description = "Retorna a lista de clientes e fornecedores ativos."
+            summary = "Listar contrapartes com paginação",
+            description = "Retorna uma página de contrapartes ordenada por nome. Por padrão só as ativas; includeInactive=true inclui as desativadas."
     )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Lista de contrapartes retornada com sucesso",
-                    content = @Content(
-                            mediaType = MediaType.APPLICATION_JSON_VALUE,
-                            array = @ArraySchema(schema = @Schema(implementation = CounterpartyResponse.class))
-                    )
+                    description = "Página retornada com sucesso",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = PagedResult.class))
             )
     })
     @GetMapping
-    ResponseEntity<List<CounterpartyResponse>> listCounterparties();
+    ResponseEntity<PagedResult<CounterpartyResponse>> listCounterparties(
+            @Parameter(description = "Índice da página (base 0)", example = "0")
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Tamanho da página (máximo 500)", example = "50")
+            @RequestParam(defaultValue = "50") int size,
+            @Parameter(description = "Inclui registros desativados")
+            @RequestParam(defaultValue = "false") boolean includeInactive
+    );
 
     @Operation(
             summary = "Buscar contraparte por ID",
@@ -95,5 +102,52 @@ public interface CounterpartyControllerOpenApi {
     ResponseEntity<CounterpartyResponse> createCounterparty(
             @RequestBody(description = "Dados cadastrais da contraparte", required = true)
             @Valid @org.springframework.web.bind.annotation.RequestBody CreateCounterpartyRequest request
+    );
+
+    @Operation(
+            summary = "Alterar contraparte",
+            description = "Atualiza parcialmente o cadastro: só os campos enviados mudam. active=true reativa um registro desativado."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Cadastro atualizado",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = CounterpartyResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Registro não encontrado",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
+            ),
+            @ApiResponse(
+                    responseCode = "422",
+                    description = "Nome duplicado",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
+            )
+    })
+    @PatchMapping("/{id}")
+    ResponseEntity<CounterpartyResponse> patchCounterparty(
+            @Parameter(description = "UUID do registro", required = true)
+            @PathVariable UUID id,
+            @RequestBody(description = "Campos a alterar", required = true)
+            @Valid @org.springframework.web.bind.annotation.RequestBody PatchCounterpartyRequest request
+    );
+
+    @Operation(
+            summary = "Desativar contraparte",
+            description = "Desativa o registro (exclusão lógica). Idempotente: desativar de novo responde 204."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Registro desativado"),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Registro não encontrado",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
+            )
+    })
+    @DeleteMapping("/{id}")
+    ResponseEntity<Void> deactivateCounterparty(
+            @Parameter(description = "UUID do registro", required = true)
+            @PathVariable UUID id
     );
 }

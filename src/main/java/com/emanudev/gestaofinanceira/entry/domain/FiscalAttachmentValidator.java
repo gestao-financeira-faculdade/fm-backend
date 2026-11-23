@@ -5,15 +5,13 @@ import com.emanudev.gestaofinanceira.entry.domain.strategy.factory.AttachmentSig
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.AttachmentFileNameValidationImpl;
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.AttachmentMaxSizeValidationImpl;
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.AttachmentNotEmptyValidationImpl;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.security.MessageDigest;
+import java.text.Normalizer;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 
-@Component
 public class FiscalAttachmentValidator {
 
     public static final long MAX_SIZE_BYTES = 10_485_760L; // 10 MB
@@ -25,7 +23,6 @@ public class FiscalAttachmentValidator {
     private final List<AttachmentValidationStrategy> validationStrategies;
     private final AttachmentSignatureFactory signatureFactory;
 
-    @Autowired
     public FiscalAttachmentValidator(
             List<AttachmentValidationStrategy> validationStrategies,
             AttachmentSignatureFactory signatureFactory
@@ -78,7 +75,7 @@ public class FiscalAttachmentValidator {
         String trimmed = fileName.trim().replace('\\', '/');
         int lastSlash = trimmed.lastIndexOf('/');
         String baseName = lastSlash >= 0 ? trimmed.substring(lastSlash + 1) : trimmed;
-        String cleaned = baseName.replaceAll("[^a-zA-Z0-9._-]", "_");
+        String cleaned = Normalizer.normalize(baseName, Normalizer.Form.NFC).replaceAll("[^\\p{L}\\p{N}._ -]", "_");
         if (cleaned.isBlank() || cleaned.equals(".") || cleaned.equals("..")) {
             return "attachment";
         }

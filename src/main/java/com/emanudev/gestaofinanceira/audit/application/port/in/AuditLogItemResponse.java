@@ -2,6 +2,7 @@ package com.emanudev.gestaofinanceira.audit.application.port.in;
 
 import com.emanudev.gestaofinanceira.audit.domain.model.AuditLogEntry;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
+import com.fasterxml.jackson.annotation.JsonRawValue;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -17,7 +18,9 @@ public record AuditLogItemResponse(
         String actorType,
         String ipAddress,
         String correlationId,
+        @JsonRawValue
         String previousState,
+        @JsonRawValue
         String newState,
         Instant occurredAt
 ) {

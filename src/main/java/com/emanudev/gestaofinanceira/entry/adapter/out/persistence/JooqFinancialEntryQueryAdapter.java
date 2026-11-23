@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import com.emanudev.gestaofinanceira.shared.adapter.out.persistence.LikePattern;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -216,20 +217,25 @@ public class JooqFinancialEntryQueryAdapter implements FinancialEntryQueryPort {
                 .from(FE)
                 .where(FE_ID.eq(effectiveRootId).or(FE_ROOT_ID.eq(effectiveRootId)))
                 .orderBy(FE_CREATED_AT.asc(), FE_DUE_DATE.asc())
-                .fetch(r -> new FinancialEntryLineageNode(
-                        r.get(FE_ID),
-                        r.get(FE_PARENT_ID),
-                        r.get(FE_ROOT_ID),
-                        EntryType.valueOf(r.get(FE_ENTRY_TYPE)),
-                        EntryStatus.valueOf(r.get(FE_STATUS)),
-                        r.get(FE_DESCRIPTION),
-                        r.get(FE_DUE_DATE),
-                        r.get(FE_SETTLEMENT_DATE),
-                        r.get(FE_ORIGINAL_AMOUNT),
-                        r.get(FE_SETTLED_AMOUNT),
-                        r.get(FE_CURRENCY),
-                        toInstant(r.get(FE_CREATED_AT))
-                ));
+                .fetch(r -> {
+                    EntryStatus status = EntryStatus.valueOf(r.get(FE_STATUS));
+                    BigDecimal originalAmount = r.get(FE_ORIGINAL_AMOUNT);
+                    return new FinancialEntryLineageNode(
+                            r.get(FE_ID),
+                            r.get(FE_PARENT_ID),
+                            r.get(FE_ROOT_ID),
+                            EntryType.valueOf(r.get(FE_ENTRY_TYPE)),
+                            status,
+                            r.get(FE_DESCRIPTION),
+                            r.get(FE_DUE_DATE),
+                            r.get(FE_SETTLEMENT_DATE),
+                            originalAmount,
+                            r.get(FE_SETTLED_AMOUNT),
+                            outstandingAmount(status, originalAmount),
+                            r.get(FE_CURRENCY),
+                            toInstant(r.get(FE_CREATED_AT))
+                    );
+                });
     }
 
     private Condition buildFilterCondition(FinancialEntryFilter filter) {
@@ -254,11 +260,11 @@ public class JooqFinancialEntryQueryAdapter implements FinancialEntryQueryPort {
             condition = condition.and(FE_DUE_DATE.le(filter.dueDateTo()));
         }
         if (filter.search() != null && !filter.search().isBlank()) {
-            String pattern = "%" + filter.search().trim().toLowerCase(Locale.ROOT) + "%";
+            String pattern = "%" + LikePattern.escape(filter.search().trim().toLowerCase(Locale.ROOT)) + "%";
             condition = condition.and(
-                    DSL.lower(FE_DESCRIPTION).like(pattern)
-                            .or(DSL.lower(DSL.coalesce(CP_LEGAL_NAME, "")).like(pattern))
-                            .or(DSL.lower(C_NAME).like(pattern))
+                    DSL.lower(FE_DESCRIPTION).like(pattern, LikePattern.ESCAPE)
+                            .or(DSL.lower(DSL.coalesce(CP_LEGAL_NAME, "")).like(pattern, LikePattern.ESCAPE))
+                            .or(DSL.lower(C_NAME).like(pattern, LikePattern.ESCAPE))
             );
         }
         return condition;
@@ -276,6 +282,8 @@ public class JooqFinancialEntryQueryAdapter implements FinancialEntryQueryPort {
         Integer attCount = r.get(attachmentCountField);
         Long version = r.get(FE_VERSION);
         Boolean requiresAttachment = r.get(C_REQUIRES_ATTACHMENT);
+        EntryStatus status = EntryStatus.valueOf(r.get(FE_STATUS));
+        BigDecimal originalAmount = r.get(FE_ORIGINAL_AMOUNT);
 
         return new FinancialEntrySummaryView(
                 r.get(FE_ID),
@@ -290,13 +298,14 @@ public class JooqFinancialEntryQueryAdapter implements FinancialEntryQueryPort {
                 r.get(FE_COUNTERPARTY_ID),
                 r.get(CP_LEGAL_NAME),
                 EntryType.valueOf(r.get(FE_ENTRY_TYPE)),
-                EntryStatus.valueOf(r.get(FE_STATUS)),
+                status,
                 r.get(FE_DESCRIPTION),
                 r.get(FE_COMPETENCE_DATE),
                 r.get(FE_DUE_DATE),
                 r.get(FE_SETTLEMENT_DATE),
-                r.get(FE_ORIGINAL_AMOUNT),
+                originalAmount,
                 r.get(FE_SETTLED_AMOUNT),
+                outstandingAmount(status, originalAmount),
                 r.get(FE_DISCOUNT_AMOUNT),
                 r.get(FE_INTEREST_AMOUNT),
                 r.get(FE_LATE_FEE_AMOUNT),
@@ -306,6 +315,10 @@ public class JooqFinancialEntryQueryAdapter implements FinancialEntryQueryPort {
                 toInstant(r.get(FE_CREATED_AT)),
                 toInstant(r.get(FE_UPDATED_AT))
         );
+    }
+
+    private static BigDecimal outstandingAmount(EntryStatus status, BigDecimal originalAmount) {
+        return status.isOpen() ? originalAmount : BigDecimal.ZERO.setScale(2);
     }
 
     private static Instant toInstant(OffsetDateTime odt) {

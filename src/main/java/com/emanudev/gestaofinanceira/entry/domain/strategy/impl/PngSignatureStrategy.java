@@ -2,9 +2,7 @@ package com.emanudev.gestaofinanceira.entry.domain.strategy.impl;
 
 import com.emanudev.gestaofinanceira.entry.domain.FiscalAttachmentValidator;
 import com.emanudev.gestaofinanceira.entry.domain.strategy.AttachmentSignatureStrategy;
-import org.springframework.stereotype.Component;
 
-@Component
 public class PngSignatureStrategy implements AttachmentSignatureStrategy {
 
     private static final byte[] PNG_MAGIC = new byte[]{

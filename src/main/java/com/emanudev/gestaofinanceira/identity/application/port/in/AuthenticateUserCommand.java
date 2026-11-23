@@ -8,6 +8,11 @@ public record AuthenticateUserCommand(
         @Email(message = "Formato de e-mail inválido")
         String email,
         @NotBlank(message = "A senha é obrigatória")
-        String password
+        String password,
+        String clientIp
 ) {
+
+    public AuthenticateUserCommand(String email, String password) {
+        this(email, password, null);
+    }
 }

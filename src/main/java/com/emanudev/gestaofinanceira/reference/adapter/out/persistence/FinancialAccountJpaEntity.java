@@ -71,4 +71,16 @@ public class FinancialAccountJpaEntity {
                 updatedAt
         );
     }
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof FinancialAccountJpaEntity other)) return false;
+        return id != null && id.equals(other.id);
+    }
+
+    @Override
+    public final int hashCode() {
+        return getClass().hashCode();
+    }
 }

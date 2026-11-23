@@ -1,5 +1,6 @@
 package com.emanudev.gestaofinanceira.audit.adapter.in.web;
 
+import com.emanudev.gestaofinanceira.audit.adapter.in.web.mapper.AuditLogWebMapper;
 import com.emanudev.gestaofinanceira.audit.application.port.in.AuditLogFilter;
 import com.emanudev.gestaofinanceira.audit.application.port.in.AuditLogItemResponse;
 import com.emanudev.gestaofinanceira.audit.application.port.in.QueryAuditLogsUseCase;
@@ -9,6 +10,7 @@ import com.emanudev.gestaofinanceira.shared.application.PagedResult;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,9 +20,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuditLogController implements AuditLogControllerOpenApi {
 
     private final QueryAuditLogsUseCase queryAuditLogsUseCase;
+    private final AuditLogWebMapper auditLogWebMapper;
+
+    @Autowired
+    public AuditLogController(
+            QueryAuditLogsUseCase queryAuditLogsUseCase,
+            AuditLogWebMapper auditLogWebMapper
+    ) {
+        this.queryAuditLogsUseCase = queryAuditLogsUseCase;
+        this.auditLogWebMapper = auditLogWebMapper;
+    }
 
     public AuditLogController(QueryAuditLogsUseCase queryAuditLogsUseCase) {
-        this.queryAuditLogsUseCase = queryAuditLogsUseCase;
+        this(queryAuditLogsUseCase, new AuditLogWebMapper());
     }
 
     @Override
@@ -34,7 +46,7 @@ public class AuditLogController implements AuditLogControllerOpenApi {
             int page,
             int size
     ) {
-        AuditLogFilter filter = new AuditLogFilter(
+        AuditLogFilter filter = auditLogWebMapper.toFilter(
                 entityType,
                 entityId,
                 actorUserId,
@@ -42,7 +54,7 @@ public class AuditLogController implements AuditLogControllerOpenApi {
                 startDate,
                 endDate
         );
-        PageQuery pageQuery = PageQuery.of(page, size);
+        PageQuery pageQuery = auditLogWebMapper.toPageQuery(page, size);
         PagedResult<AuditLogItemResponse> result = queryAuditLogsUseCase.queryAuditLogs(filter, pageQuery);
         return ResponseEntity.ok(result);
     }

@@ -2,7 +2,7 @@
 
 Referência operacional para agentes de IA ao criar, modificar, refatorar ou revisar código Java com separação arquitetural entre domínio, aplicação e adaptadores neste repositório. Complementa o guia [JAVA_BEST_PRACTICES.md](./JAVA_BEST_PRACTICES.md).
 
-- **Contexto do repositório:** `com.emanudev.gestaofinanceira` (Java 25 sem `--enable-preview`, Spring Boot 4, WebMVC, gRPC, Spring Data JPA/Hibernate, jOOQ, PostgreSQL/Flyway, Testcontainers e GraalVM Native Image). O projeto está em estágio inicial (apenas classes de bootstrap) e não impõe arquitetura hexagonal a código legado ou módulos que sigam outro padrão.
+- **Contexto do repositório:** `com.emanudev.gestaofinanceira` (Java 25 sem `--enable-preview`, Spring Boot 4, WebMVC, gRPC, Spring Data JPA/Hibernate, jOOQ, PostgreSQL/Flyway, Redis, AWS S3 / MiniStack, Testcontainers e GraalVM Native Image). O projeto adota Arquitetura Hexagonal e CQRS modular (`shared`, `identity`, `audit`, `entry`, `reference`, `simulation`, `reporting`).
 
 ## Índice
 
@@ -29,7 +29,7 @@ Referência operacional para agentes de IA ao criar, modificar, refatorar ou rev
    - [HEX-10 Acoplamento entre casos de uso e tecnologias externas](#hex-10-acoplamento-entre-casos-de-uso-e-tecnologias-externas)
    - [HEX-11 Dependências circulares entre módulos ou pacotes](#hex-11-dependências-circulares-entre-módulos-ou-pacotes)
    - [HEX-12 Interfaces excessivamente genéricas ou abstrações especulativas](#hex-12-interfaces-excessivamente-genéricas-ou-abstrações-especulativas)
-   - [HEX-13 Modelo de domínio complexo para operações CRUD simples](#hex-13-modelo-de-domínio-complexo-para-operações-crud-simples)
+   - [HEX-13 Acoplamento em camadas tradicionais (Controller -> Service -> Repository) ignorando Portas e Adaptadores](#hex-13-acoplamento-em-camadas-tradicionais-controller---service---repository-ignorando-portas-e-adaptadores)
    - [HEX-14 Transações abertas além do limite necessário](#hex-14-transações-abertas-além-do-limite-necessário)
    - [HEX-15 Testes de unidade que exigem infraestrutura real](#hex-15-testes-de-unidade-que-exigem-infraestrutura-real)
    - [HEX-16 Testes baseados exclusivamente em mocks nos adaptadores](#hex-16-testes-baseados-exclusivamente-em-mocks-nos-adaptadores)
@@ -41,22 +41,21 @@ Referência operacional para agentes de IA ao criar, modificar, refatorar ou rev
 
 ## 1. Regras de decisão e desambiguação
 
-1. **Preserve a arquitetura existente no escopo da tarefa:** se um pacote já utiliza organização tradicional em camadas (`Controller` -> `Service` -> `Repository`), mantenha esse padrão ao modificá-lo. Só aplique a estrutura hexagonal completa quando o pacote já a utilizar ou quando a tarefa solicitar sua criação.
-2. **Proibição de refatoração fora do escopo:** não mova classes, não renomeie pacotes e não introduza portas em código adjacente não relacionado à tarefa. Comunique violações encontradas fora do escopo informando localização e prioridade (`Crítica`, `Alta`, `Média` ou `Baixa`, conforme [JAVA_BEST_PRACTICES.md](./JAVA_BEST_PRACTICES.md#2-convenções-deste-guia)).
-3. **Subdivisão interna adotada:** quando a arquitetura hexagonal for utilizada neste projeto, divida o código em três áreas com dependências apontando para o centro:
-   - `domain`: entidades, agregados, objetos de valor, serviços de domínio e exceções de negócio (100% Java puro, sem Spring/JPA/Jackson/gRPC).
-   - `application`: casos de uso (orquestração e `@Transactional`), comandos, consultas, resultados e interfaces das portas de saída.
-   - `adapter`: adaptadores de entrada (`in.web`, `in.grpc`) e de saída (`out.persistence`, `out.client`).
+1. **Obrigatoriedade estrita da Arquitetura Hexagonal:** todo o projeto **DEVE** seguir estritamente a Arquitetura Hexagonal (*Ports and Adapters*) em todos os contextos (`shared`, `identity`, `audit`, `entry`, `reference`, `simulation`, `reporting`). É proibido utilizar arquitetura tradicional acoplada em camadas (`Controller` -> `Service` -> `JpaRepository`). Qualquer código que viole as fronteiras hexagonais está incorreto e deve ser corrigido.
+2. **Correção de violações arquiteturais:** ao identificar desvios em relação a este guia (como `domain` importando frameworks, `application` importando `adapter`, `adapter.out` importando `adapter.in`, ou controllers com lógica/mapeamento inline), corrija a estrutura para restaurar a conformidade hexagonal.
+3. **Subdivisão interna obrigatória:** divida cada contexto de negócio em três camadas concêntricas com dependências apontando exclusivamente para o centro:
+   - `domain`: entidades, agregados, objetos de valor, serviços/estratégias de domínio e exceções de negócio (100% Java SE 25 puro, sem Spring/JPA/Jackson/gRPC).
+   - `application`: casos de uso atômicos (`*UseCase`, orquestração e `@Transactional`), estratégias de aplicação (`application.strategy`), comandos, consultas, resultados e interfaces das portas de saída (`*Port`).
+   - `adapter`: adaptadores de entrada (`in.web`, `in.aop`, `in.scheduler`, `in.grpc`) e de saída (`out.persistence`, `out.storage`, `out.export`, `out.security`, `out.grpc`).
 4. **Desambiguação — Portas de entrada (*Inbound Ports*):**
-   - **Padrão:** exponha a **própria classe concreta do caso de uso** (`@Service public class TransferMoneyUseCase`) como porta de entrada. Não crie um par interface + classe (`TransferMoneyPort` + `TransferMoneyServiceImpl`) com relação 1:1 (alinha-se a [DES-03](./JAVA_BEST_PRACTICES.md#des-03-abstrações-especulativas-service--serviceimpl)).
-   - **Exceção:** crie interface para porta de entrada apenas se houver múltiplas implementações, decoradores explícitos ou separação em módulos Maven distintos.
+   - **Padrão:** exponha a **própria classe concreta do caso de uso** (`@Service public class TransferMoneyUseCase`) ou uma interface de caso de uso dedicada na camada `application` implementada exclusivamente por um `*UseCase` em `application` (nunca diretamente por um adaptador de saída em `adapter.out`).
 5. **Desambiguação — Portas de saída (*Outbound Ports*):**
-   - **Padrão:** crie sempre uma interface na camada `application` (ou `domain`, se acionada por serviço de domínio) para qualquer fronteira de I/O (banco de dados, clientes HTTP/gRPC, mensageria).
-   - **Granularidade:** prefira **uma porta coesa por agregado ou integração externa** (ex.: `AccountRepositoryPort` contendo apenas os métodos necessários aos casos de uso, como `findById` e `save`). Separe escrita e leitura em portas distintas apenas quando tiverem implementações tecnológicas diferentes (ex.: `AccountRepositoryPort` implementado com JPA para comandos e `AccountQueryPort` implementado com jOOQ para relatórios).
-6. **Desambiguação — Sem cerimônia de *Presenters*:** ao contrário da *Clean Architecture* estrita, não crie *Output Boundaries* com *Presenters* mutáveis. O caso de uso deve retornar diretamente um `record` ou uma `sealed interface` de resultado, cabendo ao adaptador de entrada converter esse retorno para HTTP (`ResponseEntity` / `ProblemDetail`) ou gRPC.
-7. **Desambiguação — CRUD e consultas de leitura (*CQRS leve*):**
-   - Operações meramente cadastrais sem regras de negócio nem invariantes não justificam separar modelo de domínio de entidade de persistência (ver [HEX-13](#hex-13-modelo-de-domínio-complexo-para-operações-crud-simples)).
-   - Consultas somente leitura não devem carregar agregados de domínio: projete os dados diretamente em `records` imutáveis usando jOOQ ou projeções do Spring Data JPA.
+   - **Padrão:** crie sempre uma interface na camada `application` para qualquer fronteira de I/O (banco de dados, clientes HTTP/gRPC, armazenamento S3, exportadores de arquivo).
+   - **Granularidade:** prefira **uma porta coesa por agregado ou integração externa** (ex.: `FinancialEntryRepositoryPort` implementado com JPA para comandos e `FinancialEntryQueryPort` implementado com jOOQ para consultas).
+6. **Desambiguação — Sem cerimônia de *Presenters*:** ao contrário da *Clean Architecture* estrita, não crie *Output Boundaries* com *Presenters* mutáveis. O caso de uso deve retornar diretamente um tipo de domínio, `record` ou `sealed interface` de resultado, cabendo ao `*WebMapper` no adaptador de entrada converter esse retorno para DTO HTTP / `ResponseEntity`.
+7. **Desambiguação — Escrita vs. Consultas de leitura (*CQRS*):**
+   - Toda operação de escrita (inclusive em subdomínios cadastrais como `reference`) deve separar estritamente a entidade de domínio (`FinancialAccount`, `Category`, `Counterparty`) da entidade de persistência (`*JpaEntity`), passando por `*UseCase` e `*RepositoryPort`.
+   - Consultas somente leitura (*Query side*) devem ser orquestradas por um `*UseCase` em `application` que aciona uma porta de consulta de saída (`*QueryPort`), cuja implementação em `adapter.out.persistence` projeta os dados diretamente em `records` imutáveis usando jOOQ.
 
 | Situação na tarefa | Decisão direta |
 | --- | --- |
@@ -72,10 +71,10 @@ Referência operacional para agentes de IA ao criar, modificar, refatorar ou rev
 
 | Componente | O que deve conter | O que NUNCA deve conter |
 | --- | --- | --- |
-| **Domínio** (`domain`) | - **Entidades/Agregados:** classes com identidade e métodos de negócio que protegem invariantes (`Account.debit(...)`).<br>- **Objetos de Valor:** `records` imutáveis validados no construtor compacto (`Money`).<br>- **Serviços de Domínio:** lógica *stateless* que envolve mais de um agregado.<br>- **Exceções e Eventos de Domínio:** fatos e falhas expressos na linguagem do negócio. | - Anotações ou imports de Spring, JPA/Hibernate (`@Entity`), Jackson (`@JsonProperty`), Bean Validation de transporte, jOOQ ou Protobuf.<br>- Chamadas de I/O, queries ou acesso direto à rede.<br>- `Setters` públicos que permitam estado inválido. |
-| **Aplicação e Portas** (`application`) | - **Casos de Uso:** classes `@Service` que coordenam o fluxo de trabalho e demarcam `@Transactional`.<br>- **Entradas e Saídas:** `records` para `*Command`/`*Query` e `sealed interface`/`records` para resultados (`*Outcome` / `*Result`).<br>- **Portas de Saída:** interfaces de repositório, consulta ou integração externa com tipos do domínio/aplicação. | - Cálculos financeiros ou regras de transição de estado que pertençam à entidade de domínio.<br>- Referências a `ResponseEntity`, `HttpStatus`, `HttpServletRequest`, `Pageable` do Spring Data, `DSLContext` do jOOQ, `@Entity` JPA ou stubs gRPC. |
-| **Adaptadores de Entrada** (`adapter.in`) | - `@RestController`, `@RestControllerAdvice`, DTOs de request/response HTTP (`records` com `@Valid`).<br>- Serviços gRPC (`extends *ImplBase`).<br>- Conversão de DTO/Protobuf -> `Command`/`Query` e de `Outcome`/exceções de domínio -> HTTP `ProblemDetail` ou `io.grpc.Status`. | - Regras de negócio, cálculos de saldo ou validações de domínio.<br>- Demarcação `@Transactional`.<br>- Injeção direta de adaptadores de saída ou repositórios JPA/jOOQ (exceto se o módulo for CRUD simples não hexagonal). |
-| **Adaptadores de Saída** (`adapter.out`) | - Implementações das portas de saída (`*PersistenceAdapter`, `*ClientAdapter`).<br>- Entidades JPA (`@Entity`), interfaces `JpaRepository`, queries tipadas com `DSLContext` (jOOQ), chamadas `RestClient` ou clientes gRPC.<br>- Mapeamento entre modelo de domínio e modelo de persistência/integração, e tradução de exceções técnicas. | - Decisões de negócio ocultas durante o salvamento ou consulta.<br>- Exposição de tipos internos do adaptador (`*JpaEntity`, `Record` do jOOQ) fora do pacote do adaptador. |
+| **Domínio** (`domain`) | - **Entidades/Agregados:** classes com identidade e métodos de negócio que protegem invariantes (`Account.debit(...)`, `FinancialEntry.settle(...)`).<br>- **Objetos de Valor:** `records` imutáveis validados no construtor compacto (`Money`, `Percentage`, `DateRange`).<br>- **Serviços e Estratégias de Domínio:** lógica *stateless* pura (100% Java SE 25) sem dependências de framework.<br>- **Exceções e Eventos de Domínio:** fatos e falhas expressos na linguagem do negócio. | - Anotações ou imports de Spring (`org.springframework.*`), JPA/Hibernate (`@Entity`), Jackson (`@JsonProperty`), Bean Validation (`jakarta.validation.*`), Lombok, SLF4J (`org.slf4j.*`), jOOQ ou Protobuf.<br>- Chamadas de I/O, queries ou acesso direto à rede.<br>- `Setters` públicos que permitam estado inválido. |
+| **Aplicação e Portas** (`application`) | - **Casos de Uso (`*UseCase`):** classes `@Service` com responsabilidade única (SRP) sobre um fluxo específico e atômico de negócio (criar, liquidar, cancelar, listar, exportar) e demarcação `@Transactional`.<br>- **Serviços (`*Service`):** apenas orquestradores de múltiplos casos de uso ou provedores de ações técnicas que dependem de recursos externos (ex.: `JwtTokenService`). Proibido criar classes híbridas `*UseCaseService`.<br>- **Estratégias de Aplicação (`application.strategy`):** interfaces e implementações `@Component` / `@Order` para seleção polimórfica (`Strategy + Factory`) ou validação semântica composta (`List<ValidationStrategy>`).<br>- **Entradas e Saídas:** `records` para `*Command`/`*Query` (com Jakarta Bean Validation `@NotNull`/`@NotBlank`) e `sealed interface`/`records` para resultados (`*Outcome` / `*Result`).<br>- **Portas de Saída:** interfaces de repositório, consulta ou integração externa com tipos do domínio/aplicação. | - Cálculos financeiros ou regras de transição de estado que pertençam à entidade de domínio.<br>- Referências a `ResponseEntity`, `HttpStatus`, `HttpServletRequest`, `Pageable` do Spring Data, `DSLContext` do jOOQ, `@Entity` JPA ou stubs gRPC.<br>- Duplicação de anotações de validação de parâmetro (`@NotNull`, `@NotBlank`, `@Valid`) em métodos `@Override` de classes que implementam interfaces (violação da especificação JSR-380 §4.5.5 — `HV000151`). |
+| **Adaptadores de Entrada** (`adapter.in`) | - **Interfaces OpenAPI (`*ControllerOpenApi`):** concentram **exclusivamente** todas as anotações do Spring Web (`@RequestMapping`, `@GetMapping`, `@PostMapping`, `@PathVariable`, `@RequestParam`, `@RequestHeader`, `@RequestBody`, `@Valid`) e do Swagger/OpenAPI (`@Tag`, `@Operation`, `@ApiResponses`).<br>- **Controllers Concretas (`@RestController`):** implementam `*ControllerOpenApi` mantendo apenas `@RestController` (e `@PreAuthorize` quando aplicável) e métodos `@Override` limpos.<br>- **DTOs (`adapter.in.web.dto`) e Mappers (`adapter.in.web.mapper`):** cada `record` de request/response em seu próprio arquivo em `dto`, e toda conversão HTTP <-> Domínio/Command ou montagem de `ResponseEntity` em `*WebMapper`.<br>- `@RestControllerAdvice` (`GlobalExceptionHandler`) traduzindo exceções para RFC 9457 (`ProblemDetail`). | - Anotações de roteamento/Swagger, `records` internos ou métodos privados de mapeamento/construção de response dentro da classe concreta `@RestController`.<br>- Regras de negócio, cálculos de saldo ou validações de domínio.<br>- Demarcação `@Transactional`.<br>- Injeção direta de adaptadores de saída ou repositórios JPA/jOOQ. |
+| **Adaptadores de Saída** (`adapter.out`) | - Implementações das portas de saída (`*PersistenceAdapter`, `*StorageAdapter`, `*GrpcAdapter`).<br>- Entidades JPA (`@Entity`), interfaces `JpaRepository`, queries tipadas com `DSLContext` (jOOQ), clientes Redis, AWS S3 (`S3Client`), `RestClient` ou clientes gRPC.<br>- Mapeamento entre modelo de domínio e modelo de persistência/integração, e tradução de exceções técnicas. | - Decisões de negócio ocultas durante o salvamento ou consulta.<br>- Exposição de tipos internos do adaptador (`*JpaEntity`, `Record` do jOOQ) fora do pacote do adaptador.<br>- Anotações de constraint de parâmetro (`@NotNull`, `@NotBlank`) em métodos `@Override` que implementam `*Port` (`HV000151`). |
 
 ---
 
@@ -85,11 +84,11 @@ Todas as dependências de código-fonte (`import` e referências de tipos) devem
 
 | Origem \ Destino permitido | `domain` | `application` | `adapter.in` | `adapter.out` | Frameworks (Web, JPA, jOOQ, gRPC) |
 | --- | --- | --- | --- | --- | --- |
-| **`domain`** | Sim | **Não** | **Não** | **Não** | **Não** |
-| **`application`** | Sim | Sim | **Não** | **Não** | Apenas `@Service` e `@Transactional` |
-| **`adapter.in`** | Sim (tipos expostos pela aplicação) | Sim | Sim (mesmo contexto) | **Não** | Sim (Spring Web, Validation, Jackson, gRPC) |
-| **`adapter.out`** | Sim | Sim (Portas de Saída) | **Não** | Sim (mesmo contexto) | Sim (Spring Data JPA, Hibernate, jOOQ, RestClient, gRPC) |
-| **Configuração (`config`)** | Sim | Sim | Sim | Sim | Sim (`@Configuration`, `@Bean`) |
+| **`domain`** | Sim | **Não** | **Não** | **Não** | **Não (100% Java SE 25 puro)** |
+| **`application`** | Sim | Sim | **Não** | **Não** | Apenas `@Service`, `@Component`, `@Order`, `@Transactional`, `@Validated`, `jakarta.validation.*` e `org.slf4j.*` |
+| **`adapter.in`** | Sim (tipos expostos pela aplicação) | Sim | Sim (mesmo contexto) | **Não** | Sim (Spring Web, OpenAPI/Swagger, Security, Validation, Jackson, gRPC) |
+| **`adapter.out`** | Sim | Sim (Portas de Saída) | **Não** | Sim (mesmo contexto) | Sim (Spring Data JPA/Redis, Hibernate, jOOQ, AWS S3, RestClient, gRPC) |
+| **Configuração (`config`)** | Sim | Sim | Sim | Sim | Sim (`@Configuration`, `@Bean`, `ApplicationProperties`) |
 
 **Exemplo de fronteira correta (Domínio + Porta + Caso de Uso):**
 
@@ -156,19 +155,28 @@ com.emanudev.gestaofinanceira
     │   ├── Account.java
     │   ├── AccountStatus.java
     │   └── InsufficientBalanceException.java
-    ├── application/                         # Casos de uso, comandos, resultados e portas de saída
-    │   ├── TransferMoneyUseCase.java
+    ├── application/                         # Casos de uso atômicos, estratégias, comandos e portas
+    │   ├── usecase/
+    │   │   └── TransferMoneyUseCase.java
+    │   ├── strategy/
+    │   │   ├── TransferValidationStrategy.java
+    │   │   └── impl/
     │   ├── TransferMoneyCommand.java
     │   ├── TransferOutcome.java
     │   └── AccountRepositoryPort.java
     └── adapter/
         ├── in/
-        │   ├── web/                         # Controllers REST e Request/Response DTOs
+        │   ├── web/                         # Interface OpenAPI, Controller limpa, DTOs e WebMapper
+        │   │   ├── AccountTransferControllerOpenApi.java
         │   │   ├── AccountTransferController.java
-        │   │   └── TransferRequest.java
+        │   │   ├── dto/
+        │   │   │   ├── TransferRequest.java
+        │   │   │   └── TransferResponse.java
+        │   │   └── mapper/
+        │   │       └── AccountTransferWebMapper.java
         │   └── grpc/                        # Serviços gRPC
         └── out/
-            └── persistence/                 # Implementação das portas (classes package-private)
+            └── persistence/                 # Implementação das portas (JPA / jOOQ)
                 ├── AccountPersistenceAdapter.java
                 ├── AccountJpaEntity.java
                 └── SpringDataAccountRepository.java
@@ -213,9 +221,9 @@ Para detalhes sobre sintaxe e disponibilidade dos recursos do Java 25 (`record`,
 
 ### 5.5 Mapeamento de modelos e visibilidade
 
-- **Separação entre Entidade de Domínio e `@Entity` JPA:** em módulos hexagonais, a entidade de domínio (`Account`) não leva anotações JPA. O adaptador de saída define `AccountJpaEntity` (com construtor `protected` sem argumentos exigido pelo Hibernate) e converte entre `Account` e `AccountJpaEntity` usando métodos de mapeamento explícitos em Java puro.
-- **Quando evitar DTO duplicado na leitura:** em consultas de leitura projetadas como `record` (ex.: `AccountSummaryView`), se o contrato JSON de resposta for idêntico à projeção, o controller pode retornar o `record` diretamente sem criar um `AccountSummaryResponseDto` duplicado.
-- **Visibilidade *package-private* nos adaptadores:** declare `AccountJpaEntity`, `SpringDataAccountRepository`, classes de mapeamento interno e a própria classe `AccountPersistenceAdapter` sem o modificador `public` (visibilidade de pacote), deixando apenas a interface da porta pública. Assim, o compilador impede qualquer acoplamento acidental do caso de uso à implementação de persistência.
+- **Separação obrigatória entre Entidade de Domínio e `@Entity` JPA:** em todos os módulos do projeto, a entidade de domínio (`Account`, `FinancialEntry`, `User`) nunca leva anotações JPA. O adaptador de saída define `*JpaEntity` (com construtor `protected` sem argumentos exigido pelo Hibernate e `equals`/`hashCode` baseados apenas no `id`) e converte entre a entidade de domínio e `*JpaEntity` usando métodos de mapeamento explícitos em Java puro.
+- **Quando evitar DTO duplicado na leitura:** em consultas de leitura projetadas como `record` (ex.: `ExecutiveKpiResponse`, `AuditLogItemResponse`), se o contrato JSON de resposta for idêntico à projeção da camada `application`, o controller pode retornar o `record` diretamente sem criar um DTO duplicado.
+- **Isolamento dos adaptadores:** mantenha `*JpaEntity`, `SpringData*Repository` e adaptadores de persistência confinados em `adapter.out.persistence`, expondo para a camada `application` apenas a interface da porta de saída (`*Port`).
 
 ---
 
@@ -239,7 +247,7 @@ Para detalhes sobre sintaxe e disponibilidade dos recursos do Java 25 (`record`,
    }
    ```
 5. **Alternativa recomendada:** manter `Account` em `domain` apenas com tipos do JDK (`BigDecimal`, `UUID`, `Instant`) e mover `@Entity` para `AccountJpaEntity` (`adapter.out.persistence`) e `@JsonProperty` para o DTO do adaptador web (`adapter.in.web`).
-6. **Exceções:** módulos cadastrais simples que não adotam arquitetura hexagonal (ver [HEX-13](#hex-13-modelo-de-domínio-complexo-para-operações-crud-simples)).
+6. **Exceções:** nenhuma.
 7. **Prioridade:** Alta.
 
 ### HEX-02 Casos de uso implementados diretamente em controladores
@@ -259,7 +267,7 @@ Para detalhes sobre sintaxe e disponibilidade dos recursos do Java 25 (`record`,
    }
    ```
 5. **Alternativa recomendada:** mover a orquestração e o `@Transactional` para `TransferMoneyUseCase` na camada `application` e restringir o controller à conversão de protocolo.
-6. **Exceções:** endpoints de leitura trivial em módulos que não utilizam arquitetura hexagonal.
+6. **Exceções:** nenhuma.
 7. **Prioridade:** Alta.
 
 ### HEX-03 Portas sem necessidade real ou interfaces 1:1 indiscriminadas
@@ -337,8 +345,8 @@ Para detalhes sobre sintaxe e disponibilidade dos recursos do Java 25 (`record`,
        org.springframework.data.domain.Page<Transaction> findAll(Pageable pageable);
    }
    ```
-5. **Alternativa recomendada:** usar tipos próprios enxutos na porta (`PageQuery(int page, int size)` e `PagedResult<T>(List<T> items, long total)`) e converter para `PageRequest.of(...)` dentro do adaptador de saída.
-6. **Exceções:** módulos não hexagonais que utilizam `JpaRepository` diretamente na camada de serviço.
+5. **Alternativa recomendada:** usar tipos próprios enxutos na porta (`PageQuery(int page, int size)` e `PagedResult<T>(List<T> items, long total)`) e converter para `PageRequest.of(...)` ou `.limit().offset()` do jOOQ dentro do adaptador de saída.
+6. **Exceções:** nenhuma.
 7. **Prioridade:** Média.
 
 ### HEX-08 Entidades de persistência reutilizadas como domínio e contrato HTTP
@@ -381,7 +389,7 @@ Para detalhes sobre sintaxe e disponibilidade dos recursos do Java 25 (`record`,
    }
    ```
 5. **Alternativa recomendada:** extrair uma porta de saída orientada ao negócio (`AntiFraudCheckPort`) na camada `application` e encapsular o stub gRPC em um adaptador em `adapter.out.client`.
-6. **Exceções:** nenhuma em módulos hexagonais.
+6. **Exceções:** nenhuma.
 7. **Prioridade:** Alta.
 
 ### HEX-11 Dependências circulares entre módulos ou pacotes
@@ -411,15 +419,21 @@ Para detalhes sobre sintaxe e disponibilidade dos recursos do Java 25 (`record`,
 6. **Exceções:** nenhuma para repositórios de domínio.
 7. **Prioridade:** Média.
 
-### HEX-13 Modelo de domínio complexo para operações CRUD simples
+### HEX-13 Acoplamento em camadas tradicionais (Controller -> Service -> Repository) ignorando Portas e Adaptadores
 
-1. **Problema:** aplicar separação completa entre entidade de domínio, entidade JPA, múltiplos mapeadores, comandos e portas em cadastros triviais sem invariantes nem cálculos de negócio.
-2. **Como identificar:** classes em `domain` que são cópias 1:1 das colunas da tabela, sem nenhum método de comportamento ou validação de negócio.
-3. **Consequências:** excesso de arquivos e código de mapeamento sem benefício de testabilidade ou proteção de regras.
-4. **Exemplo problemático:** criar 8 classes e interfaces em 4 subpacotes apenas para cadastrar e listar uma tabela auxiliar `CostCenter(id, code, name)`.
-5. **Alternativa recomendada:** para subdomínios puramente cadastrais (CRUD), usar um fluxo direto (`Controller` -> `Service` -> `JpaRepository`/jOOQ com DTO `record`), reservando a arquitetura hexagonal para fluxos com regras de negócio relevantes.
-6. **Exceções:** quando o usuário solicitar explicitamente a estrutura hexagonal naquele módulo.
-7. **Prioridade:** Média.
+1. **Problema:** implementar funcionalidades ou cadastros conectando `@RestController` diretamente a um `@Service` genérico que injeta `JpaRepository`/`DSLContext`, ou fazer um adaptador de saída (`adapter.out`) implementar diretamente uma porta de entrada (`application.port.in`) contornando a camada de casos de uso (`*UseCase`).
+2. **Como identificar:** classes `@Service` importando `SpringData*Repository` ou `*JpaEntity`; adaptadores de saída (`*PersistenceAdapter`, `Jooq*QueryAdapter`) implementando interfaces de `port.in` ou importando classes de `adapter.in`.
+3. **Consequências:** quebra da inversão de dependência, vazamento de detalhes de persistência para a camada de aplicação/transporte e inconsistência arquitetural entre módulos do projeto.
+4. **Exemplo problemático:**
+   ```java
+   @Component
+   public class JooqAuditQueryAdapter implements QueryAuditLogsUseCase { // Adaptador de saída implementando porta de entrada!
+       private final DSLContext dsl;
+   }
+   ```
+5. **Alternativa recomendada:** manter o fluxo hexagonal completo em todos os contextos (`Controller` -> `*UseCase` em `application` -> `*Port` em `application.port.out` -> `*Adapter` em `adapter.out`), separando sempre o modelo de domínio da `*JpaEntity`.
+6. **Exceções:** nenhuma.
+7. **Prioridade:** Alta.
 
 ### HEX-14 Transações abertas além do limite necessário
 

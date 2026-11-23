@@ -17,7 +17,7 @@ public record PageQuery(int page, int size) {
         return new PageQuery(page, size);
     }
 
-    public int offset() {
-        return page * size;
+    public long offset() {
+        return (long) page * size;
     }
 }

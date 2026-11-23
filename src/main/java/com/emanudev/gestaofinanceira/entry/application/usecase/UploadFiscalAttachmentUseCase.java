@@ -4,6 +4,8 @@ import com.emanudev.gestaofinanceira.entry.application.AttachmentStoragePort;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntryRepositoryPort;
 import com.emanudev.gestaofinanceira.entry.application.FiscalAttachmentRepositoryPort;
 import com.emanudev.gestaofinanceira.entry.domain.FinancialEntry;
+import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
+import com.emanudev.gestaofinanceira.entry.domain.EntryStatus;
 import com.emanudev.gestaofinanceira.entry.domain.FiscalAttachment;
 import com.emanudev.gestaofinanceira.entry.domain.FiscalAttachmentValidator;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
@@ -31,7 +33,6 @@ public class UploadFiscalAttachmentUseCase {
     private final ActorContextPort actorContextPort;
     private final Clock clock;
 
-    @Autowired
     public UploadFiscalAttachmentUseCase(
             FinancialEntryRepositoryPort entryRepository,
             FiscalAttachmentRepositoryPort attachmentRepository,
@@ -50,6 +51,7 @@ public class UploadFiscalAttachmentUseCase {
         this.clock = clock;
     }
 
+    @Autowired
     public UploadFiscalAttachmentUseCase(
             FinancialEntryRepositoryPort entryRepository,
             FiscalAttachmentRepositoryPort attachmentRepository,
@@ -74,6 +76,12 @@ public class UploadFiscalAttachmentUseCase {
     public FiscalAttachment execute(UUID entryId, String originalFileName, byte[] fileBytes) {
         FinancialEntry entry = entryRepository.findById(entryId)
                 .orElseThrow(() -> new ResourceNotFoundException("FinancialEntry", entryId));
+        if (entry.status() == EntryStatus.CANCELLED) {
+            throw new BusinessRuleViolationException(
+                    "ENTRY_CANCELLED",
+                    "Attachments cannot be added to a cancelled financial entry"
+            );
+        }
 
         FiscalAttachmentValidator.ValidatedAttachment validated =
                 attachmentValidator.validate(originalFileName, fileBytes);

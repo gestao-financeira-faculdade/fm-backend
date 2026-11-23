@@ -1,0 +1,49 @@
+name: hpc-engine
+
+on:
+  pull_request:
+    paths:
+      - "hpc-engine/**"
+      - "src/main/proto/**"
+      - ".github/workflows/hpc-engine.yml"
+  push:
+    branches: [main]
+    paths:
+      - "hpc-engine/**"
+      - "src/main/proto/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Release, CPU path only)
+        run: >
+          cmake -S hpc-engine -B hpc-engine/build
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_GRPC_SERVER=OFF
+          -DENABLE_OPENCL=OFF
+
+      - name: Build
+        run: cmake --build hpc-engine/build -j"$(nproc)"
+
+      - name: Unit tests
+        run: ctest --test-dir hpc-engine/build --output-on-failure
+
+      # Fails the job if N threads are not faster than 1 thread or if results differ between thread counts.
+      # Hosted runners are small and shared, so the workload and the required speedup are modest here.
+      - name: Parallel speedup benchmark
+        run: |
+          set -o pipefail
+          echo "CPUs visible: $(nproc)"
+          ./hpc-engine/build/speedup_benchmark 500000 30 3 1.3 | tee speedup.txt
+          {
+            echo '### HPC engine parallel speedup'
+            echo '```'
+            cat speedup.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

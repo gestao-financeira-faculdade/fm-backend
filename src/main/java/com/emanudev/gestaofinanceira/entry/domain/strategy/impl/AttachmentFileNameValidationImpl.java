@@ -2,11 +2,7 @@ package com.emanudev.gestaofinanceira.entry.domain.strategy.impl;
 
 import com.emanudev.gestaofinanceira.entry.domain.InvalidAttachmentFormatException;
 import com.emanudev.gestaofinanceira.entry.domain.strategy.AttachmentValidationStrategy;
-import org.springframework.core.annotation.Order;
-import org.springframework.stereotype.Component;
 
-@Component
-@Order(1)
 public class AttachmentFileNameValidationImpl implements AttachmentValidationStrategy {
 
     @Override

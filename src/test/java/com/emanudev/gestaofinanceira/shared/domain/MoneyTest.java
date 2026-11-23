@@ -11,6 +11,22 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class MoneyTest {
 
+    @Test
+    @DisplayName("DEF-12: moeda precisa ser um código ISO-4217 existente")
+    void shouldRejectCurrencyOutsideIso4217() {
+        assertThatThrownBy(() -> Money.ofIso(BigDecimal.ONE, "XYZ"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Money.ofIso(BigDecimal.ONE, "1$#"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(Money.ofIso(BigDecimal.ONE, "usd").currency()).isEqualTo("USD");
+    }
+
+    @Test
+    @DisplayName("Códigos legados já gravados continuam legíveis")
+    void shouldStillLoadLegacyCurrencyCodes() {
+        assertThat(Money.of(BigDecimal.ONE, "XYZ").currency()).isEqualTo("XYZ");
+    }
+
     @ParameterizedTest(name = "input={0} should round HALF_EVEN to {1} ({2} cents)")
     @CsvSource({
             "100.005, 100.00, 10000",

@@ -58,7 +58,7 @@ class ReferenceDomainTest {
         Counterparty counterparty = Counterparty.create(
                 "  Fornecedor Alpha LTDA ",
                 "   ",
-                " 12.345.678/0001-90 ",
+                " 12.345.678/0001-95 ",
                 CounterpartyType.SUPPLIER,
                 FIXED_NOW
         );
@@ -66,7 +66,7 @@ class ReferenceDomainTest {
         assertThat(counterparty.id()).isNotNull();
         assertThat(counterparty.legalName()).isEqualTo("Fornecedor Alpha LTDA");
         assertThat(counterparty.tradeName()).isNull();
-        assertThat(counterparty.taxId()).isEqualTo("12.345.678/0001-90");
+        assertThat(counterparty.taxId()).isEqualTo("12345678000195");
     }
 
     @Test

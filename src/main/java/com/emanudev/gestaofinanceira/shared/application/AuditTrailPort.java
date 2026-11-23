@@ -11,4 +11,7 @@ public interface AuditTrailPort {
             Object previousState,
             Object newState
     );
+
+    default void skipAuditForCurrentAction() {
+    }
 }

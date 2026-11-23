@@ -23,11 +23,11 @@ import org.springframework.stereotype.Component;
 public class CsvStreamingExporter implements ReportExportStrategy {
 
     public static final String CONTENT_TYPE = "text/csv;charset=UTF-8";
-    public static final String DEFAULT_FILENAME = "lancamentos-financeiros.csv";
+    public static final String DEFAULT_FILENAME = "relatorio-financeiro.csv";
 
     @Override
     public ExportedReport exportReport(List<ReportRowItem> rows, ReportExportFilter filter) {
-        return new ExportedReport(export(rows), CONTENT_TYPE, DEFAULT_FILENAME);
+        return new ExportedReport(export(rows), CONTENT_TYPE, ExportFileNames.forToday("csv"));
     }
 
     @Override

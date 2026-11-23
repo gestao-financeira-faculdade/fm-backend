@@ -1,11 +1,11 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CancelFinancialEntryRequest;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CreateFinancialEntryRequest;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.FinancialEntryResponse;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.SettleFinancialEntryRequest;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.SettlementResponse;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.mapper.FinancialEntryWebMapper;
+import com.emanudev.gestaofinanceira.entry.application.CreateEntryResult;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntryFilter;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntryLineageNode;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntrySummaryView;
@@ -20,8 +20,10 @@ import com.emanudev.gestaofinanceira.entry.domain.EntryType;
 import com.emanudev.gestaofinanceira.entry.domain.FinancialEntry;
 import com.emanudev.gestaofinanceira.entry.domain.SettlementCommand;
 import com.emanudev.gestaofinanceira.entry.domain.SettlementOutcome;
+import com.emanudev.gestaofinanceira.shared.adapter.in.web.EntityTags;
 import com.emanudev.gestaofinanceira.shared.application.PageQuery;
 import com.emanudev.gestaofinanceira.shared.application.PagedResult;
+import java.net.URI;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
@@ -29,6 +31,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
 public class FinancialEntryController implements FinancialEntryControllerOpenApi {
@@ -67,11 +70,18 @@ public class FinancialEntryController implements FinancialEntryControllerOpenApi
             CreateFinancialEntryRequest request,
             String idempotencyKeyHeader
     ) {
-        FinancialEntry created = createFinancialEntryUseCase.execute(
+        CreateEntryResult result = createFinancialEntryUseCase.execute(
                 financialEntryWebMapper.toCreateCommand(request, idempotencyKeyHeader)
         );
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(financialEntryWebMapper.toResponse(created, getFinancialEntryUseCase));
+        FinancialEntry entry = result.entry();
+        URI location = ServletUriComponentsBuilder.fromCurrentRequestUri()
+                .path("/{id}")
+                .buildAndExpand(entry.id())
+                .toUri();
+        return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
+                .location(location)
+                .eTag(EntityTags.of(entry.version()))
+                .body(financialEntryWebMapper.toResponse(entry, getFinancialEntryUseCase));
     }
 
     @Override
@@ -97,15 +107,19 @@ public class FinancialEntryController implements FinancialEntryControllerOpenApi
     @Override
     public ResponseEntity<FinancialEntryResponse> getEntry(UUID id) {
         FinancialEntry entry = getFinancialEntryUseCase.getById(id);
-        return ResponseEntity.ok(financialEntryWebMapper.toResponse(entry, getFinancialEntryUseCase));
+        return ResponseEntity.ok()
+                .eTag(EntityTags.of(entry.version()))
+                .body(financialEntryWebMapper.toResponse(entry, getFinancialEntryUseCase));
     }
 
     @Override
     public ResponseEntity<SettlementResponse> settleEntry(
             UUID id,
-            SettleFinancialEntryRequest request
+            SettleFinancialEntryRequest request,
+            String ifMatch
     ) {
         FinancialEntry current = getFinancialEntryUseCase.getById(id);
+        EntityTags.requireMatch(ifMatch, current.version());
         SettlementCommand command = financialEntryWebMapper.toSettlementCommand(request, current, clock);
         Long expectedVersion = financialEntryWebMapper.extractExpectedVersion(request);
         SettlementOutcome outcome = settleFinancialEntryUseCase.execute(id, command, expectedVersion);
@@ -113,25 +127,12 @@ public class FinancialEntryController implements FinancialEntryControllerOpenApi
     }
 
     @Override
-    public ResponseEntity<FinancialEntryResponse> cancelEntry(
-            UUID id,
-            CancelFinancialEntryRequest request,
-            String reason
-    ) {
-        String resolvedReason = financialEntryWebMapper.resolveCancellationReason(request, reason);
-        FinancialEntry cancelled = cancelFinancialEntryUseCase.execute(id, resolvedReason);
-        return ResponseEntity.ok(financialEntryWebMapper.toResponse(cancelled, getFinancialEntryUseCase));
-    }
-
-    @Override
-    public ResponseEntity<FinancialEntryResponse> deleteEntryLogically(
-            UUID id,
-            CancelFinancialEntryRequest request,
-            String reason
-    ) {
-        String resolvedReason = financialEntryWebMapper.resolveCancellationReason(request, reason);
-        FinancialEntry cancelled = cancelFinancialEntryUseCase.execute(id, resolvedReason);
-        return ResponseEntity.ok(financialEntryWebMapper.toResponse(cancelled, getFinancialEntryUseCase));
+    public ResponseEntity<Void> deleteEntryLogically(UUID id, String reason, String ifMatch) {
+        if (ifMatch != null && !ifMatch.isBlank()) {
+            EntityTags.requireMatch(ifMatch, getFinancialEntryUseCase.getById(id).version());
+        }
+        cancelFinancialEntryUseCase.execute(id, financialEntryWebMapper.validateCancellationReason(reason));
+        return ResponseEntity.noContent().build();
     }
 
     @Override

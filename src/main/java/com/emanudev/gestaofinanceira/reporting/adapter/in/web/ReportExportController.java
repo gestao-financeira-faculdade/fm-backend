@@ -1,6 +1,5 @@
 package com.emanudev.gestaofinanceira.reporting.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.reporting.adapter.in.web.dto.ExportReportRequest;
 import com.emanudev.gestaofinanceira.reporting.adapter.in.web.mapper.ReportExportWebMapper;
 import com.emanudev.gestaofinanceira.reporting.application.ExportEntriesReportUseCase;
 import com.emanudev.gestaofinanceira.reporting.application.ExportedReport;
@@ -56,79 +55,6 @@ public class ReportExportController implements ReportExportControllerOpenApi {
                 search
         );
         ExportedReport exportedReport = exportEntriesReportUseCase.export(targetFormat, filter);
-        return reportExportWebMapper.toResponseEntity(exportedReport);
-    }
-
-    @Override
-    public ResponseEntity<byte[]> exportEntriesPost(
-            String format,
-            String entryType,
-            String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search,
-            ExportReportRequest body
-    ) {
-        ReportExportFormat targetFormat = reportExportWebMapper.toFormat(format, body);
-        ReportExportFilter filter = reportExportWebMapper.toFilter(
-                entryType,
-                status,
-                categoryId,
-                accountId,
-                dueDateFrom,
-                dueDateTo,
-                search,
-                body
-        );
-        ExportedReport exportedReport = exportEntriesReportUseCase.export(targetFormat, filter);
-        return reportExportWebMapper.toResponseEntity(exportedReport);
-    }
-
-    @Override
-    public ResponseEntity<byte[]> exportEntriesCsvAlias(
-            String entryType,
-            String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search
-    ) {
-        ReportExportFilter filter = reportExportWebMapper.toFilter(
-                entryType,
-                status,
-                categoryId,
-                accountId,
-                dueDateFrom,
-                dueDateTo,
-                search
-        );
-        ExportedReport exportedReport = exportEntriesReportUseCase.export(ReportExportFormat.CSV, filter);
-        return reportExportWebMapper.toResponseEntity(exportedReport);
-    }
-
-    @Override
-    public ResponseEntity<byte[]> exportEntriesPdfAlias(
-            String entryType,
-            String status,
-            UUID categoryId,
-            UUID accountId,
-            LocalDate dueDateFrom,
-            LocalDate dueDateTo,
-            String search
-    ) {
-        ReportExportFilter filter = reportExportWebMapper.toFilter(
-                entryType,
-                status,
-                categoryId,
-                accountId,
-                dueDateFrom,
-                dueDateTo,
-                search
-        );
-        ExportedReport exportedReport = exportEntriesReportUseCase.export(ReportExportFormat.PDF, filter);
         return reportExportWebMapper.toResponseEntity(exportedReport);
     }
 }

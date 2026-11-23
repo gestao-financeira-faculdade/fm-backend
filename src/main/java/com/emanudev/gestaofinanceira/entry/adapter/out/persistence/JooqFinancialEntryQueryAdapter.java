@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import com.emanudev.gestaofinanceira.shared.adapter.out.persistence.LikePattern;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -259,11 +260,11 @@ public class JooqFinancialEntryQueryAdapter implements FinancialEntryQueryPort {
             condition = condition.and(FE_DUE_DATE.le(filter.dueDateTo()));
         }
         if (filter.search() != null && !filter.search().isBlank()) {
-            String pattern = "%" + filter.search().trim().toLowerCase(Locale.ROOT) + "%";
+            String pattern = "%" + LikePattern.escape(filter.search().trim().toLowerCase(Locale.ROOT)) + "%";
             condition = condition.and(
-                    DSL.lower(FE_DESCRIPTION).like(pattern)
-                            .or(DSL.lower(DSL.coalesce(CP_LEGAL_NAME, "")).like(pattern))
-                            .or(DSL.lower(C_NAME).like(pattern))
+                    DSL.lower(FE_DESCRIPTION).like(pattern, LikePattern.ESCAPE)
+                            .or(DSL.lower(DSL.coalesce(CP_LEGAL_NAME, "")).like(pattern, LikePattern.ESCAPE))
+                            .or(DSL.lower(C_NAME).like(pattern, LikePattern.ESCAPE))
             );
         }
         return condition;

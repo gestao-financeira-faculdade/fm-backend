@@ -128,6 +128,6 @@ public interface AuthControllerOpenApi {
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             )
     })
-    @GetMapping("/users/me")
+    @GetMapping("/auth/me")
     ResponseEntity<UserSummaryResponse> me();
 }

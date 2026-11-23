@@ -11,6 +11,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -30,7 +31,7 @@ public class PdfReportExporter implements ReportExportStrategy {
 
     @Override
     public ExportedReport exportReport(List<ReportRowItem> rows, ReportExportFilter filter) {
-        return new ExportedReport(export(rows, filter), CONTENT_TYPE, DEFAULT_FILENAME);
+        return new ExportedReport(export(rows, filter), CONTENT_TYPE, ExportFileNames.forToday("pdf"));
     }
 
     @Override
@@ -39,10 +40,12 @@ public class PdfReportExporter implements ReportExportStrategy {
     }
 
     public static final String PDF_HEADER_SIGNATURE = "%PDF-1.4";
+    private static final Charset WIN_ANSI = Charset.forName("windows-1252");
     public static final String INSTITUTIONAL_TITLE =
-            "SISTEMA INTEGRADO DE GESTAO FINANCEIRA CORPORATIVA";
+            "SISTEMA INTEGRADO DE GESTÃO FINANCEIRA CORPORATIVA";
     public static final String REPORT_SUBTITLE =
-            "RELATORIO AUDITAVEL DE LANCAMENTOS FINANCEIROS";
+            "RELATÓRIO AUDITÁVEL DE LANÇAMENTOS FINANCEIROS";
+    static final int LINES_PER_PAGE = 56;
 
     public byte[] export(List<ReportRowItem> rows) {
         return export(rows, ReportExportFilter.empty());
@@ -85,8 +88,8 @@ public class PdfReportExporter implements ReportExportStrategy {
                 + " | Busca: " + valueOrAll(filter.search()));
         lines.add("  Categoria ID: " + (filter.categoryId() != null ? filter.categoryId() : "TODAS")
                 + " | Conta ID: " + (filter.accountId() != null ? filter.accountId() : "TODAS"));
-        lines.add("  Vencimento De: " + (filter.dueDateFrom() != null ? filter.dueDateFrom() : "INICIO")
-                + " | Ate: " + (filter.dueDateTo() != null ? filter.dueDateTo() : "FIM"));
+        lines.add("  Vencimento de: " + (filter.dueDateFrom() != null ? filter.dueDateFrom() : "INICIO")
+                + " | Até: " + (filter.dueDateTo() != null ? filter.dueDateTo() : "FIM"));
         lines.add("--------------------------------------------------------------------------------");
 
         BigDecimal totalReceivable = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN);
@@ -97,11 +100,11 @@ public class PdfReportExporter implements ReportExportStrategy {
             if (row == null) {
                 continue;
             }
-            BigDecimal original = scale(row.originalAmount());
+            BigDecimal exposure = exposure(row);
             if ("RECEIVABLE".equalsIgnoreCase(row.entryType())) {
-                totalReceivable = totalReceivable.add(original);
+                totalReceivable = totalReceivable.add(exposure);
             } else if ("PAYABLE".equalsIgnoreCase(row.entryType())) {
-                totalPayable = totalPayable.add(original);
+                totalPayable = totalPayable.add(exposure);
             }
             if (row.settledAmount() != null) {
                 totalSettled = totalSettled.add(scale(row.settledAmount()));
@@ -111,17 +114,17 @@ public class PdfReportExporter implements ReportExportStrategy {
         BigDecimal netBalance = totalReceivable.subtract(totalPayable).setScale(2, RoundingMode.HALF_EVEN);
 
         lines.add("TOTALIZADORES CONSOLIDADOS:");
-        lines.add("  Total de Lancamentos: " + rows.size());
+        lines.add("  Total de lançamentos: " + rows.size());
         lines.add("  Total Contas a Receber (RECEIVABLE): BRL " + totalReceivable.toPlainString());
         lines.add("  Total Contas a Pagar (PAYABLE): BRL " + totalPayable.toPlainString());
-        lines.add("  Total Liquidado Acumulado: BRL " + totalSettled.toPlainString());
-        lines.add("  Saldo Liquido do Relatorio: BRL " + netBalance.toPlainString());
+        lines.add("  Total liquidado acumulado: BRL " + totalSettled.toPlainString());
+        lines.add("  Saldo líquido do relatório: BRL " + netBalance.toPlainString());
         lines.add("--------------------------------------------------------------------------------");
-        lines.add("LISTAGEM DE LANCAMENTOS:");
-        lines.add("Vencimento | Tipo | Status | Descricao | Categoria | Contraparte | Valor Original | Liquidado");
+        lines.add("LISTAGEM DE LANÇAMENTOS:");
+        lines.add("Vencimento | Tipo | Status | Descrição | Categoria | Contraparte | Valor original | Liquidado");
 
         if (rows.isEmpty()) {
-            lines.add("Nenhum lancamento encontrado para os filtros informados.");
+            lines.add("Nenhum lançamento encontrado para os filtros informados.");
         } else {
             for (ReportRowItem row : rows) {
                 if (row == null) {
@@ -145,61 +148,55 @@ public class PdfReportExporter implements ReportExportStrategy {
         }
 
         lines.add("--------------------------------------------------------------------------------");
-        lines.add("Hash SHA-256 de Integridade: " + computeIntegrityHash(rows));
+        lines.add("Hash SHA-256 de integridade: " + computeIntegrityHash(rows));
         return lines;
     }
 
     private byte[] buildPdfDocument(List<String> lines) {
-        StringBuilder streamContent = new StringBuilder(2048);
-        streamContent.append("BT\n");
-        streamContent.append("/F1 9 Tf\n");
-        streamContent.append("13 TL\n");
-        streamContent.append("36 800 Td\n");
-
-        for (int i = 0; i < lines.size(); i++) {
-            String escaped = escapePdfText(lines.get(i));
-            streamContent.append("(").append(escaped).append(") Tj\n");
-            if (i < lines.size() - 1) {
-                streamContent.append("T*\n");
-            }
+        List<List<String>> pages = new ArrayList<>();
+        for (int start = 0; start < lines.size(); start += LINES_PER_PAGE) {
+            pages.add(lines.subList(start, Math.min(lines.size(), start + LINES_PER_PAGE)));
         }
-        streamContent.append("ET\n");
+        if (pages.isEmpty()) {
+            pages.add(List.of());
+        }
 
-        byte[] contentBytes = streamContent.toString().getBytes(StandardCharsets.ISO_8859_1);
-
-        ByteArrayOutputStream pdf = new ByteArrayOutputStream(contentBytes.length + 1024);
-        List<Integer> offsets = new ArrayList<>(6);
+        int pageCount = pages.size();
+        int fontObject = 3;
+        int firstPageObject = 4;
+        ByteArrayOutputStream pdf = new ByteArrayOutputStream(4096 + lines.size() * 120);
+        List<Integer> offsets = new ArrayList<>();
 
         writeAscii(pdf, PDF_HEADER_SIGNATURE + "\n");
 
-        // Object 1: Catalog
         offsets.add(pdf.size());
         writeAscii(pdf, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
 
-        // Object 2: Pages
+        StringBuilder kids = new StringBuilder();
+        for (int i = 0; i < pageCount; i++) {
+            kids.append(firstPageObject + i * 2).append(" 0 R ");
+        }
         offsets.add(pdf.size());
-        writeAscii(pdf, "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+        writeAscii(pdf, "2 0 obj\n<< /Type /Pages /Kids [" + kids.toString().trim() + "] /Count " + pageCount + " >>\nendobj\n");
 
-        // Object 3: Page
         offsets.add(pdf.size());
-        writeAscii(
-                pdf,
-                "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
-                        + "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n"
-        );
+        writeAscii(pdf, fontObject + " 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
+                + "/Encoding /WinAnsiEncoding >>\nendobj\n");
 
-        // Object 4: Font
-        offsets.add(pdf.size());
-        writeAscii(
-                pdf,
-                "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n"
-        );
+        for (int i = 0; i < pageCount; i++) {
+            int pageObject = firstPageObject + i * 2;
+            int contentObject = pageObject + 1;
+            byte[] content = pageContent(pages.get(i), i + 1, pageCount);
 
-        // Object 5: Content Stream
-        offsets.add(pdf.size());
-        writeAscii(pdf, "5 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n");
-        pdf.writeBytes(contentBytes);
-        writeAscii(pdf, "endstream\nendobj\n");
+            offsets.add(pdf.size());
+            writeAscii(pdf, pageObject + " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+                    + "/Resources << /Font << /F1 " + fontObject + " 0 R >> >> /Contents " + contentObject + " 0 R >>\nendobj\n");
+
+            offsets.add(pdf.size());
+            writeAscii(pdf, contentObject + " 0 obj\n<< /Length " + content.length + " >>\nstream\n");
+            pdf.writeBytes(content);
+            writeAscii(pdf, "endstream\nendobj\n");
+        }
 
         int xrefOffset = pdf.size();
         writeAscii(pdf, "xref\n0 " + (offsets.size() + 1) + "\n");
@@ -207,14 +204,39 @@ public class PdfReportExporter implements ReportExportStrategy {
         for (int offset : offsets) {
             writeAscii(pdf, String.format(Locale.ROOT, "%010d 00000 n \n", offset));
         }
-
         writeAscii(
                 pdf,
                 "trailer\n<< /Size " + (offsets.size() + 1) + " /Root 1 0 R >>\n"
                         + "startxref\n" + xrefOffset + "\n%%EOF\n"
         );
-
         return pdf.toByteArray();
+    }
+
+    private static byte[] pageContent(List<String> pageLines, int pageNumber, int pageCount) {
+        StringBuilder stream = new StringBuilder(2048);
+        stream.append("BT\n/F1 9 Tf\n13 TL\n36 800 Td\n");
+        for (int i = 0; i < pageLines.size(); i++) {
+            stream.append("(").append(escapePdfText(pageLines.get(i))).append(") Tj\n");
+            if (i < pageLines.size() - 1) {
+                stream.append("T*\n");
+            }
+        }
+        stream.append("ET\n");
+        stream.append("BT\n/F1 8 Tf\n500 24 Td\n(")
+                .append(escapePdfText("Página " + pageNumber + " de " + pageCount))
+                .append(") Tj\nET\n");
+        return stream.toString().getBytes(WIN_ANSI);
+    }
+
+    /**
+     * What the entry still represents for the totals: the settled part of a paid parent plus its open residual
+     * child add up to the original amount once, instead of counting the parent's original and the child again.
+     */
+    private static BigDecimal exposure(ReportRowItem row) {
+        if ("CANCELLED".equalsIgnoreCase(row.status())) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN);
+        }
+        return row.settledAmount() != null ? scale(row.settledAmount()) : scale(row.originalAmount());
     }
 
     private static void writeAscii(ByteArrayOutputStream out, String text) {
@@ -225,9 +247,12 @@ public class PdfReportExporter implements ReportExportStrategy {
         if (text == null || text.isBlank()) {
             return "";
         }
-        String normalized = Normalizer.normalize(text, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "");
-        return normalized.replaceAll("[\\r\\n]+", " ").trim();
+        String composed = Normalizer.normalize(text, Normalizer.Form.NFC).replaceAll("[\\r\\n]+", " ").trim();
+        StringBuilder printable = new StringBuilder(composed.length());
+        composed.codePoints().forEach(cp -> printable.append(WIN_ANSI.newEncoder().canEncode(Character.toString(cp))
+                ? Character.toString(cp)
+                : "?"));
+        return printable.toString();
     }
 
     private static String escapePdfText(String text) {

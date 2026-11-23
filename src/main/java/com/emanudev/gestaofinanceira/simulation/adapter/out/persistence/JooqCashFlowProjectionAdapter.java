@@ -8,10 +8,12 @@ import org.jooq.Record;
 import org.jooq.Record4;
 import org.jooq.Result;
 import org.jooq.impl.DSL;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -27,9 +29,23 @@ public class JooqCashFlowProjectionAdapter implements CashFlowProjectionPort {
     private static final org.jooq.Table<Record> CATEGORIES = DSL.table(DSL.name("categories"));
 
     private final DSLContext dsl;
+    private final Clock clock;
+
+    @Autowired
+    public JooqCashFlowProjectionAdapter(DSLContext dsl, Clock clock) {
+        this.dsl = dsl;
+        this.clock = clock;
+    }
 
     public JooqCashFlowProjectionAdapter(DSLContext dsl) {
-        this.dsl = dsl;
+        this(dsl, Clock.systemDefaultZone());
+    }
+
+    private org.jooq.Condition settledUntilToday() {
+        return DSL.coalesce(
+                DSL.field(DSL.name("fe", "settlement_date"), LocalDate.class),
+                DSL.field(DSL.name("fe", "due_date"), LocalDate.class)
+        ).le(LocalDate.now(clock));
     }
 
     @Override
@@ -57,6 +73,7 @@ public class JooqCashFlowProjectionAdapter implements CashFlowProjectionPort {
                 .where(DSL.field(DSL.name("fa", "is_active"), Boolean.class).eq(true))
                 .and(DSL.field(DSL.name("fe", "entry_type"), String.class).eq("RECEIVABLE"))
                 .and(DSL.field(DSL.name("fe", "status"), String.class).eq("RECEIVED"))
+                .and(settledUntilToday())
                 .fetchOneInto(BigDecimal.class);
 
         BigDecimal totalPaid = dsl.select(
@@ -68,6 +85,7 @@ public class JooqCashFlowProjectionAdapter implements CashFlowProjectionPort {
                 .where(DSL.field(DSL.name("fa", "is_active"), Boolean.class).eq(true))
                 .and(DSL.field(DSL.name("fe", "entry_type"), String.class).eq("PAYABLE"))
                 .and(DSL.field(DSL.name("fe", "status"), String.class).eq("PAID"))
+                .and(settledUntilToday())
                 .fetchOneInto(BigDecimal.class);
 
         BigDecimal safeInitial = totalInitialBalance != null ? totalInitialBalance : BigDecimal.ZERO;

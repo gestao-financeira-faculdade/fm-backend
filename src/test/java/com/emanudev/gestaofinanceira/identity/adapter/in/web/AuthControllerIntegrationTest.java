@@ -161,7 +161,8 @@ class AuthControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty())
-                .andExpect(jsonPath("$.expiresIn").value(900))
+                .andExpect(jsonPath("$.expiresInSeconds").value(900))
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.user.email").value("admin@gestaofinanceira.com"))
                 .andExpect(jsonPath("$.user.role").value("ADMIN"));
     }
@@ -180,14 +181,14 @@ class AuthControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/users/me deve retornar 401 sem token e 200 com token JWT válido")
+    @DisplayName("GET /api/v1/auth/me deve retornar 401 sem token e 200 com token JWT válido")
     void shouldProtectUsersMeAndReturnProfileWhenAuthenticated() throws Exception {
-        mockMvc.perform(get("/v1/users/me"))
+        mockMvc.perform(get("/v1/auth/me"))
                 .andExpect(status().isUnauthorized());
 
         String token = tokenProvider.issueAccessToken(analistaUser).accessToken();
 
-        mockMvc.perform(get("/v1/users/me")
+        mockMvc.perform(get("/v1/auth/me")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(analistaUser.id().toString()))
@@ -288,7 +289,7 @@ class AuthControllerIntegrationTest {
         String analistaToken = tokenProvider.issueAccessToken(analistaUser).accessToken();
         String adminToken = tokenProvider.issueAccessToken(adminUser).accessToken();
 
-        for (String path : new String[]{"/v1/accounts", "/v1/financial-accounts", "/v1/categories"}) {
+        for (String path : new String[]{"/v1/accounts", "/v1/categories"}) {
             mockMvc.perform(post(path).header("Authorization", "Bearer " + analistaToken))
                     .andExpect(status().isForbidden());
             mockMvc.perform(post(path).header("Authorization", "Bearer " + adminToken))
@@ -349,11 +350,11 @@ class AuthControllerIntegrationTest {
                         .content("{}"))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/v1/users/me").header("Authorization", "Bearer " + sessaoA.get("accessToken")))
+        mockMvc.perform(get("/v1/auth/me").header("Authorization", "Bearer " + sessaoA.get("accessToken")))
                 .andExpect(status().isUnauthorized());
         refresh(sessaoA.get("refreshToken")).andExpect(status().isUnauthorized());
 
-        mockMvc.perform(get("/v1/users/me").header("Authorization", "Bearer " + sessaoB.get("accessToken")))
+        mockMvc.perform(get("/v1/auth/me").header("Authorization", "Bearer " + sessaoB.get("accessToken")))
                 .andExpect(status().isOk());
         refresh(sessaoB.get("refreshToken")).andExpect(status().isOk());
     }
@@ -465,7 +466,7 @@ class AuthControllerIntegrationTest {
     @RestController
     static class RbacProbeController {
 
-        @PostMapping({"/v1/financial-accounts", "/v1/categories", "/v1/counterparties"})
+        @PostMapping({"/v1/categories", "/v1/counterparties"})
         public Map<String, String> createReferenceData() {
             return Map.of("status", "created");
         }

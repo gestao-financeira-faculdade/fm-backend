@@ -4,6 +4,8 @@ import com.emanudev.gestaofinanceira.entry.application.AttachmentStoragePort;
 import com.emanudev.gestaofinanceira.shared.config.ApplicationProperties;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
+import java.io.InputStream;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -48,6 +50,9 @@ public class S3AttachmentStorageAdapter implements AttachmentStoragePort {
 
     @Override
     public String store(UUID entryId, UUID attachmentId, String sanitizedFileName, byte[] content) {
+        if (sanitizedFileName == null || sanitizedFileName.contains("/") || sanitizedFileName.contains("\\")) {
+            throw new BusinessRuleViolationException("INVALID_STORAGE_KEY", "File name must not contain path separators");
+        }
         String storageKey = validateStorageKey(entryId + "/" + attachmentId + "_" + sanitizedFileName);
         ensureBucketExistsIfConfigured();
 
@@ -74,6 +79,21 @@ public class S3AttachmentStorageAdapter implements AttachmentStoragePort {
                     .build();
             ResponseBytes<GetObjectResponse> response = s3Client.getObjectAsBytes(request);
             return response.asByteArray();
+        } catch (NoSuchKeyException | NoSuchBucketException ex) {
+            throw new ResourceNotFoundException("FiscalAttachmentFile", validKey);
+        } catch (S3Exception ex) {
+            if (ex.statusCode() == 404) {
+                throw new ResourceNotFoundException("FiscalAttachmentFile", validKey);
+            }
+            throw new IllegalStateException("Failed to read fiscal attachment from S3: " + validKey, ex);
+        }
+    }
+
+    @Override
+    public InputStream openStream(String storageKey) {
+        String validKey = validateStorageKey(storageKey);
+        try {
+            return s3Client.getObject(GetObjectRequest.builder().bucket(bucketName).key(validKey).build());
         } catch (NoSuchKeyException | NoSuchBucketException ex) {
             throw new ResourceNotFoundException("FiscalAttachmentFile", validKey);
         } catch (S3Exception ex) {
@@ -118,7 +138,8 @@ public class S3AttachmentStorageAdapter implements AttachmentStoragePort {
             throw new BusinessRuleViolationException("INVALID_STORAGE_KEY", "Storage key must not be blank");
         }
         String normalized = storageKey.trim().replace('\\', '/');
-        if (normalized.contains("..") || normalized.startsWith("/")) {
+        boolean traversal = Arrays.stream(normalized.split("/")).anyMatch(segment -> segment.equals("..") || segment.equals("."));
+        if (traversal || normalized.startsWith("/")) {
             throw new BusinessRuleViolationException("INVALID_STORAGE_KEY", "Path traversal attempt detected in storage key");
         }
         return normalized;

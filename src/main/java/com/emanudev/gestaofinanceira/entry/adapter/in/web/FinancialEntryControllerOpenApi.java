@@ -1,6 +1,5 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.web;
 
-import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CancelFinancialEntryRequest;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.CreateFinancialEntryRequest;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.FinancialEntryResponse;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.dto.SettleFinancialEntryRequest;
@@ -50,7 +49,12 @@ public interface FinancialEntryControllerOpenApi {
     @ApiResponses({
             @ApiResponse(
                     responseCode = "201",
-                    description = "Lançamento financeiro criado com sucesso",
+                    description = "Lançamento financeiro criado com sucesso; o cabeçalho Location aponta o recurso criado",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = FinancialEntryResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Repetição com a mesma Idempotency-Key: devolve o lançamento já criado, sem criar outro",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = FinancialEntryResponse.class))
             ),
             @ApiResponse(
@@ -106,7 +110,7 @@ public interface FinancialEntryControllerOpenApi {
             @RequestParam(required = false) String search,
             @Parameter(description = "Índice da página (base 0)", example = "0")
             @RequestParam(defaultValue = "0") int page,
-            @Parameter(description = "Tamanho da página (máximo 100)", example = "20")
+            @Parameter(description = "Tamanho da página (máximo 500)", example = "20")
             @RequestParam(defaultValue = "20") int size
     );
 
@@ -153,6 +157,11 @@ public interface FinancialEntryControllerOpenApi {
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             ),
             @ApiResponse(
+                    responseCode = "412",
+                    description = "If-Match informado não corresponde à versão atual (ETag) do lançamento",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
+            ),
+            @ApiResponse(
                     responseCode = "409",
                     description = "Conflito de concorrência otimista (versão desatualizada)",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
@@ -168,64 +177,51 @@ public interface FinancialEntryControllerOpenApi {
             @Parameter(description = "UUID do lançamento financeiro", required = true)
             @PathVariable UUID id,
             @RequestBody(description = "Parâmetros da liquidação (valor pago, descontos, juros, multa, permissão de baixa parcial e versão esperada)", required = true)
-            @Valid @org.springframework.web.bind.annotation.RequestBody SettleFinancialEntryRequest request
+            @Valid @org.springframework.web.bind.annotation.RequestBody SettleFinancialEntryRequest request,
+            @Parameter(description = "ETag do lançamento (opcional); se não corresponder à versão atual, responde 412")
+            @RequestHeader(value = "If-Match", required = false) String ifMatch
     );
 
     @Operation(
-            summary = "Cancelar logicamente um lançamento financeiro",
-            description = "Transiciona o lançamento para o estado terminal CANCELLED mediante justificativa obrigatória. Operação restrita ao perfil ADMIN."
+            summary = "Cancelar logicamente (soft delete) um lançamento financeiro",
+            description = "Transiciona o lançamento para o estado terminal CANCELLED, com justificativa obrigatória em ?reason=. Idempotente: repetir num lançamento já cancelado responde 204 sem novo registro de auditoria. Operação restrita ao perfil ADMIN."
     )
     @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Lançamento cancelado (ou já estava cancelado)"),
             @ApiResponse(
-                    responseCode = "200",
-                    description = "Lançamento cancelado com sucesso",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = FinancialEntryResponse.class))
+                    responseCode = "400",
+                    description = "Justificativa com mais de 500 caracteres",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             ),
             @ApiResponse(
                     responseCode = "403",
                     description = "Acesso negado (exclusivo para ADMIN)",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Lançamento financeiro não encontrado",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
+            ),
+            @ApiResponse(
+                    responseCode = "412",
+                    description = "If-Match informado não corresponde à versão atual do lançamento",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             ),
             @ApiResponse(
                     responseCode = "422",
-                    description = "Justificativa ausente ou lançamento já liquidado/cancelado",
-                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
-            )
-    })
-    @PostMapping("/{id}/cancel")
-    ResponseEntity<FinancialEntryResponse> cancelEntry(
-            @Parameter(description = "UUID do lançamento financeiro", required = true)
-            @PathVariable UUID id,
-            @RequestBody(description = "Justificativa do cancelamento no corpo da requisição", required = false)
-            @org.springframework.web.bind.annotation.RequestBody(required = false) CancelFinancialEntryRequest request,
-            @Parameter(description = "Justificativa do cancelamento via query parameter (alternativa ao corpo)")
-            @RequestParam(required = false) String reason
-    );
-
-    @Operation(
-            summary = "Excluir logicamente (Soft Delete) um lançamento financeiro",
-            description = "Atalho RESTful via DELETE para o cancelamento lógico auditado do lançamento financeiro. Operação restrita ao perfil ADMIN."
-    )
-    @ApiResponses({
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "Lançamento cancelado logicamente com sucesso",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = FinancialEntryResponse.class))
-            ),
-            @ApiResponse(
-                    responseCode = "403",
-                    description = "Acesso negado (exclusivo para ADMIN)",
+                    description = "Justificativa com menos de 5 caracteres, lançamento liquidado (CANNOT_CANCEL_SETTLED_ENTRY) ou com filho residual ativo (ENTRY_HAS_ACTIVE_CHILDREN)",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             )
     })
     @DeleteMapping("/{id}")
-    ResponseEntity<FinancialEntryResponse> deleteEntryLogically(
+    ResponseEntity<Void> deleteEntryLogically(
             @Parameter(description = "UUID do lançamento financeiro", required = true)
             @PathVariable UUID id,
-            @RequestBody(description = "Justificativa do cancelamento lógico", required = false)
-            @org.springframework.web.bind.annotation.RequestBody(required = false) CancelFinancialEntryRequest request,
-            @Parameter(description = "Justificativa do cancelamento via query parameter")
-            @RequestParam(required = false) String reason
+            @Parameter(description = "Justificativa do cancelamento (mínimo 5, máximo 500 caracteres)", required = true)
+            @RequestParam(required = false) String reason,
+            @Parameter(description = "ETag do lançamento (opcional); se não corresponder à versão atual, responde 412")
+            @RequestHeader(value = "If-Match", required = false) String ifMatch
     );
 
     @Operation(

@@ -38,7 +38,6 @@ public class DownloadFiscalAttachmentUseCase {
         if (!attachment.entryId().equals(entryId)) {
             throw new ResourceNotFoundException("FiscalAttachment", attachmentId);
         }
-        byte[] content = attachmentStoragePort.load(attachment.storageKey());
-        return new DownloadedAttachment(attachment, content);
+        return new DownloadedAttachment(attachment, attachmentStoragePort.openStream(attachment.storageKey()));
     }
 }

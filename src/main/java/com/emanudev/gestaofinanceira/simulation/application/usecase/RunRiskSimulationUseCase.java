@@ -3,6 +3,7 @@ package com.emanudev.gestaofinanceira.simulation.application.usecase;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
 import com.emanudev.gestaofinanceira.shared.domain.Money;
+import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
 import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import com.emanudev.gestaofinanceira.simulation.application.port.in.GetLatestSimulationPort;
 import com.emanudev.gestaofinanceira.simulation.application.port.in.RunRiskSimulationPort;
@@ -69,14 +70,22 @@ public class RunRiskSimulationUseCase implements RunRiskSimulationPort, GetLates
         UUID simulationId = UUID.randomUUID();
         UUID requestedBy = resolveRequestedBy();
 
-        RiskSimulationResult result = riskSimulationEnginePort.simulateRisk(
-                simulationId,
-                requestedBy,
-                initialBalance,
-                today,
-                params,
-                scheduledItems
-        );
+        RiskSimulationResult result;
+        try {
+            result = riskSimulationEnginePort.simulateRisk(
+                    simulationId,
+                    requestedBy,
+                    initialBalance,
+                    today,
+                    params,
+                    scheduledItems
+            );
+        } catch (ArithmeticException ex) {
+            throw new BusinessRuleViolationException(
+                    "SIMULATION_AMOUNT_OUT_OF_RANGE",
+                    "Cash flow amounts exceed the range supported by the simulation engine"
+            );
+        }
 
         return simulationRunRepositoryPort.save(result);
     }

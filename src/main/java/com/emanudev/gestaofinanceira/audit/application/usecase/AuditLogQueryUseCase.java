@@ -9,6 +9,7 @@ import com.emanudev.gestaofinanceira.shared.application.PagedResult;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -33,6 +34,10 @@ public class AuditLogQueryUseCase implements QueryAuditLogsUseCase {
     @Override
     public List<AuditLogItemResponse> getEntryAuditHistory(UUID entryId) {
         Objects.requireNonNull(entryId, "entryId must not be null");
-        return auditLogQueryPort.getEntryAuditHistory(entryId);
+        List<AuditLogItemResponse> history = auditLogQueryPort.getEntryAuditHistory(entryId);
+        if (history.isEmpty()) {
+            throw new ResourceNotFoundException("FinancialEntry", entryId);
+        }
+        return history;
     }
 }

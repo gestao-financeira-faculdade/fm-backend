@@ -3,6 +3,7 @@ package com.emanudev.gestaofinanceira.reference.application.usecase;
 import com.emanudev.gestaofinanceira.reference.application.CounterpartyRepositoryPort;
 import com.emanudev.gestaofinanceira.reference.domain.Counterparty;
 import com.emanudev.gestaofinanceira.reference.domain.CounterpartyType;
+import com.emanudev.gestaofinanceira.reference.domain.TaxId;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 import com.emanudev.gestaofinanceira.shared.application.AuditTrailPort;
 import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
@@ -36,8 +37,9 @@ public class CreateCounterpartyUseCase {
             String taxId,
             CounterpartyType counterpartyType
     ) {
-        if (taxId != null && !taxId.isBlank()) {
-            counterpartyRepository.findByTaxId(taxId.trim()).ifPresent(existing -> {
+        String normalizedTaxId = TaxId.normalizeAndValidate(taxId);
+        if (normalizedTaxId != null) {
+            counterpartyRepository.findByTaxId(normalizedTaxId).ifPresent(existing -> {
                 throw new BusinessRuleViolationException(
                         "DUPLICATE_COUNTERPARTY_TAX_ID",
                         "Counterparty already exists with taxId: " + existing.taxId()
@@ -46,7 +48,7 @@ public class CreateCounterpartyUseCase {
         }
         Instant now = Instant.now(clock);
         Counterparty created = counterpartyRepository.save(
-                Counterparty.create(legalName, tradeName, taxId, counterpartyType, now)
+                Counterparty.create(legalName, tradeName, normalizedTaxId, counterpartyType, now)
         );
         auditTrailPort.recordTransition("COUNTERPARTY", created.id(), AuditAction.CREATE, null, created);
         return created;

@@ -3,11 +3,15 @@ package com.emanudev.gestaofinanceira.reference.adapter.out.persistence;
 import com.emanudev.gestaofinanceira.reference.application.CategoryRepositoryPort;
 import com.emanudev.gestaofinanceira.reference.domain.Category;
 import com.emanudev.gestaofinanceira.reference.domain.CategoryType;
-import org.springframework.stereotype.Component;
-
+import com.emanudev.gestaofinanceira.shared.application.PageQuery;
+import com.emanudev.gestaofinanceira.shared.application.PagedResult;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Component;
 
 @Component
 class CategoryPersistenceAdapter implements CategoryRepositoryPort {
@@ -40,5 +44,17 @@ class CategoryPersistenceAdapter implements CategoryRepositoryPort {
         return repository.findByActiveTrueOrderByNameAsc().stream()
                 .map(CategoryJpaEntity::toDomain)
                 .toList();
+    }
+
+    @Override
+    public PagedResult<Category> findPage(boolean includeInactive, PageQuery page) {
+        PageRequest request = PageRequest.of(page.page(), page.size(), Sort.by("name").and(Sort.by("id")));
+        Page<CategoryJpaEntity> result = includeInactive ? repository.findAll(request) : repository.findByActiveTrue(request);
+        return PagedResult.of(
+                result.map(CategoryJpaEntity::toDomain).getContent(),
+                result.getTotalElements(),
+                page.page(),
+                page.size()
+        );
     }
 }

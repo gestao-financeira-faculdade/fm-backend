@@ -84,7 +84,10 @@ class AuditLogControllerTest {
                 .andExpect(jsonPath("$.items[0].entityId").value(entryId.toString()))
                 .andExpect(jsonPath("$.items[0].action").value("SETTLE"))
                 .andExpect(jsonPath("$.items[0].actorName").value("Carlos Gestor"))
-                .andExpect(jsonPath("$.items[0].actorRole").value("ADMIN"));
+                .andExpect(jsonPath("$.items[0].actorRole").value("ADMIN"))
+                .andExpect(jsonPath("$.items[0].ipAddress").value("10.0.0.15"))
+                .andExpect(jsonPath("$.items[0].previousState.status").value("PENDING"))
+                .andExpect(jsonPath("$.items[0].newState.status").value("SETTLED"));
 
         verify(queryAuditLogsUseCase).queryAuditLogs(
                 eq(new AuditLogFilter("FINANCIAL_ENTRY", entryId, null, AuditAction.SETTLE, null, null)),

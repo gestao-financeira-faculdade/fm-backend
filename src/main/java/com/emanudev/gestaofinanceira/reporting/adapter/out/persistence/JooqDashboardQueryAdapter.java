@@ -19,6 +19,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import com.emanudev.gestaofinanceira.shared.adapter.out.persistence.LikePattern;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -74,33 +75,17 @@ public class JooqDashboardQueryAdapter implements DashboardQueryPort {
         Field<BigDecimal> settledAmountField = DSL.field(DSL.name("settled_amount"), BigDecimal.class);
         Field<BigDecimal> effectiveSettledAmount = DSL.coalesce(settledAmountField, originalAmountField);
 
-        BigDecimal totalReceived = dsl.select(DSL.coalesce(DSL.sum(effectiveSettledAmount), BigDecimal.ZERO))
-                .from(FINANCIAL_ENTRIES)
-                .where(statusField.eq("RECEIVED"))
-                .fetchOne(0, BigDecimal.class);
+        BigDecimal consolidatedAmount = nonNull(initialAccountsBalance).add(settledNetOfActiveAccounts(
+                DSL.coalesce(
+                        DSL.field(DSL.name("fe", "settlement_date"), LocalDate.class),
+                        DSL.field(DSL.name("fe", "due_date"), LocalDate.class)
+                ).le(effectiveDate)
+        ));
 
-        BigDecimal totalPaid = dsl.select(DSL.coalesce(DSL.sum(effectiveSettledAmount), BigDecimal.ZERO))
-                .from(FINANCIAL_ENTRIES)
-                .where(statusField.eq("PAID"))
-                .fetchOne(0, BigDecimal.class);
-
-        BigDecimal consolidatedAmount = nonNull(initialAccountsBalance)
-                .add(nonNull(totalReceived))
-                .subtract(nonNull(totalPaid));
-
-        BigDecimal receivableTodayAmount = dsl.select(DSL.coalesce(DSL.sum(originalAmountField), BigDecimal.ZERO))
-                .from(FINANCIAL_ENTRIES)
-                .where(entryTypeField.eq("RECEIVABLE"))
-                .and(statusField.in("PENDING", "OVERDUE"))
-                .and(dueDateField.le(effectiveDate))
-                .fetchOne(0, BigDecimal.class);
-
-        BigDecimal payableTodayAmount = dsl.select(DSL.coalesce(DSL.sum(originalAmountField), BigDecimal.ZERO))
-                .from(FINANCIAL_ENTRIES)
-                .where(entryTypeField.eq("PAYABLE"))
-                .and(statusField.in("PENDING", "OVERDUE"))
-                .and(dueDateField.le(effectiveDate))
-                .fetchOne(0, BigDecimal.class);
+        BigDecimal receivableTodayAmount = sumOpen("RECEIVABLE", dueDateField.eq(effectiveDate));
+        BigDecimal payableTodayAmount = sumOpen("PAYABLE", dueDateField.eq(effectiveDate));
+        BigDecimal receivableOverdueAmount = sumOpen("RECEIVABLE", dueDateField.lt(effectiveDate));
+        BigDecimal payableOverdueAmount = sumOpen("PAYABLE", dueDateField.lt(effectiveDate));
 
         LocalDate monthStart = effectiveDate.withDayOfMonth(1);
         LocalDate monthEnd = effectiveDate.withDayOfMonth(effectiveDate.lengthOfMonth());
@@ -128,6 +113,8 @@ public class JooqDashboardQueryAdapter implements DashboardQueryPort {
                 Money.brl(consolidatedAmount),
                 Money.brl(nonNull(receivableTodayAmount)),
                 Money.brl(nonNull(payableTodayAmount)),
+                Money.brl(nonNull(receivableOverdueAmount)),
+                Money.brl(nonNull(payableOverdueAmount)),
                 delinquencyRate,
                 effectiveDate,
                 Instant.now(clock)
@@ -199,11 +186,11 @@ public class JooqDashboardQueryAdapter implements DashboardQueryPort {
             condition = condition.and(dueDateField.le(effectiveFilter.dueDateTo()));
         }
         if (effectiveFilter.search() != null && !effectiveFilter.search().isBlank()) {
-            String pattern = "%" + effectiveFilter.search().trim().toLowerCase(Locale.ROOT) + "%";
+            String pattern = "%" + LikePattern.escape(effectiveFilter.search().trim().toLowerCase(Locale.ROOT)) + "%";
             condition = condition.and(
-                    DSL.lower(descriptionField).like(pattern)
-                            .or(DSL.lower(DSL.coalesce(counterpartyNameField, "")).like(pattern))
-                            .or(DSL.lower(categoryNameField).like(pattern))
+                    DSL.lower(descriptionField).like(pattern, LikePattern.ESCAPE)
+                            .or(DSL.lower(DSL.coalesce(counterpartyNameField, "")).like(pattern, LikePattern.ESCAPE))
+                            .or(DSL.lower(categoryNameField).like(pattern, LikePattern.ESCAPE))
             );
         }
 
@@ -245,6 +232,44 @@ public class JooqDashboardQueryAdapter implements DashboardQueryPort {
                 ));
     }
 
+    private BigDecimal sumOpen(String entryType, Condition dueCondition) {
+        Field<String> statusField = DSL.field(DSL.name("status"), String.class);
+        Field<String> entryTypeField = DSL.field(DSL.name("entry_type"), String.class);
+        Field<BigDecimal> originalAmountField = DSL.field(DSL.name("original_amount"), BigDecimal.class);
+        return nonNull(dsl.select(DSL.coalesce(DSL.sum(originalAmountField), BigDecimal.ZERO))
+                .from(FINANCIAL_ENTRIES)
+                .where(entryTypeField.eq(entryType))
+                .and(statusField.in("PENDING", "OVERDUE"))
+                .and(dueCondition)
+                .fetchOne(0, BigDecimal.class));
+    }
+
+    /**
+     * Net of settled entries that belong to active accounts, the same rule the simulation uses for its initial
+     * balance, so the consolidated KPI, the last point of the history and the simulation start agree.
+     */
+    private BigDecimal settledNetOfActiveAccounts(Condition movementCondition) {
+        Field<String> statusField = DSL.field(DSL.name("fe", "status"), String.class);
+        Field<BigDecimal> effectiveAmount = DSL.coalesce(
+                DSL.field(DSL.name("fe", "settled_amount"), BigDecimal.class),
+                DSL.field(DSL.name("fe", "original_amount"), BigDecimal.class)
+        );
+        Field<BigDecimal> signedAmount = DSL.when(statusField.eq("RECEIVED"), effectiveAmount)
+                .when(statusField.eq("PAID"), effectiveAmount.neg())
+                .otherwise(BigDecimal.ZERO);
+        Condition condition = statusField.in("RECEIVED", "PAID")
+                .and(DSL.field(DSL.name("fa", "is_active"), Boolean.class).isTrue());
+        if (movementCondition != null) {
+            condition = condition.and(movementCondition);
+        }
+        return nonNull(dsl.select(DSL.coalesce(DSL.sum(signedAmount), BigDecimal.ZERO))
+                .from(FINANCIAL_ENTRIES.as("fe"))
+                .join(FINANCIAL_ACCOUNTS.as("fa"))
+                .on(DSL.field(DSL.name("fe", "account_id"), UUID.class).eq(DSL.field(DSL.name("fa", "id"), UUID.class)))
+                .where(condition)
+                .fetchOne(0, BigDecimal.class));
+    }
+
     private BigDecimal fetchActiveAccountsInitialBalance() {
         Field<BigDecimal> initialBalanceField = DSL.field(DSL.name("initial_balance"), BigDecimal.class);
         Field<Boolean> isActiveField = DSL.field(DSL.name("is_active"), Boolean.class);
@@ -259,30 +284,30 @@ public class JooqDashboardQueryAdapter implements DashboardQueryPort {
     private List<HistoricalBalancePoint> buildHistoricalSeries(LocalDate startDate, LocalDate endDate) {
         BigDecimal initialAccountsBalance = fetchActiveAccountsInitialBalance();
 
-        Field<String> statusField = DSL.field(DSL.name("status"), String.class);
-        Field<LocalDate> settlementDateField = DSL.field(DSL.name("settlement_date"), LocalDate.class);
-        Field<LocalDate> dueDateField = DSL.field(DSL.name("due_date"), LocalDate.class);
-        Field<LocalDate> effectiveMovementDate = DSL.coalesce(settlementDateField, dueDateField);
-        Field<BigDecimal> originalAmountField = DSL.field(DSL.name("original_amount"), BigDecimal.class);
-        Field<BigDecimal> settledAmountField = DSL.field(DSL.name("settled_amount"), BigDecimal.class);
-        Field<BigDecimal> effectiveAmount = DSL.coalesce(settledAmountField, originalAmountField);
-
+        Field<String> statusField = DSL.field(DSL.name("fe", "status"), String.class);
+        Field<LocalDate> effectiveMovementDate = DSL.coalesce(
+                DSL.field(DSL.name("fe", "settlement_date"), LocalDate.class),
+                DSL.field(DSL.name("fe", "due_date"), LocalDate.class)
+        );
+        Field<BigDecimal> effectiveAmount = DSL.coalesce(
+                DSL.field(DSL.name("fe", "settled_amount"), BigDecimal.class),
+                DSL.field(DSL.name("fe", "original_amount"), BigDecimal.class)
+        );
         Field<BigDecimal> signedAmount = DSL.when(statusField.eq("RECEIVED"), effectiveAmount)
                 .when(statusField.eq("PAID"), effectiveAmount.neg())
                 .otherwise(BigDecimal.ZERO);
 
-        BigDecimal priorMovements = dsl.select(DSL.coalesce(DSL.sum(signedAmount), BigDecimal.ZERO))
-                .from(FINANCIAL_ENTRIES)
-                .where(statusField.in("RECEIVED", "PAID"))
-                .and(effectiveMovementDate.lt(startDate))
-                .fetchOne(0, BigDecimal.class);
+        BigDecimal priorMovements = settledNetOfActiveAccounts(effectiveMovementDate.lt(startDate));
 
         Field<LocalDate> movementDateAlias = effectiveMovementDate.as("movement_date");
         Field<BigDecimal> dailyNetAlias = DSL.coalesce(DSL.sum(signedAmount), BigDecimal.ZERO).as("daily_net");
 
         var dailyRecords = dsl.select(movementDateAlias, dailyNetAlias)
-                .from(FINANCIAL_ENTRIES)
+                .from(FINANCIAL_ENTRIES.as("fe"))
+                .join(FINANCIAL_ACCOUNTS.as("fa"))
+                .on(DSL.field(DSL.name("fe", "account_id"), UUID.class).eq(DSL.field(DSL.name("fa", "id"), UUID.class)))
                 .where(statusField.in("RECEIVED", "PAID"))
+                .and(DSL.field(DSL.name("fa", "is_active"), Boolean.class).isTrue())
                 .and(effectiveMovementDate.between(startDate, endDate))
                 .groupBy(effectiveMovementDate)
                 .fetch();

@@ -45,7 +45,12 @@ public interface AuthControllerOpenApi {
             ),
             @ApiResponse(
                     responseCode = "401",
-                    description = "Credenciais inválidas ou usuário inativo",
+                    description = "Credenciais inválidas (INVALID_CREDENTIALS) ou, com a senha correta, usuário inativo (USER_INACTIVE)",
+                    content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
+            ),
+            @ApiResponse(
+                    responseCode = "429",
+                    description = "Login bloqueado temporariamente após falhas seguidas (TOO_MANY_LOGIN_ATTEMPTS); o header Retry-After informa os segundos restantes",
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             )
     })
@@ -57,7 +62,7 @@ public interface AuthControllerOpenApi {
 
     @Operation(
             summary = "Renovar par de tokens via Refresh Token",
-            description = "Valida o Refresh Token atual armazenado no Redis, aplica rotação atômica revogando o token anterior e emite um novo par de Access Token e Refresh Token."
+            description = "Valida o Refresh Token atual armazenado no Redis, aplica rotação atômica revogando o token anterior e emite um novo par de Access Token e Refresh Token. Reutilizar um Refresh Token já rotacionado revoga a sessão inteira."
     )
     @ApiResponses({
             @ApiResponse(
@@ -84,7 +89,7 @@ public interface AuthControllerOpenApi {
 
     @Operation(
             summary = "Encerrar sessão e revogar Refresh Tokens",
-            description = "Revoga imediatamente no Redis o Refresh Token informado e/ou todos os tokens ativos pertencentes ao usuário autenticado.",
+            description = "Encerra apenas a sessão do Access Token atual: o Access Token deixa de ser aceito e os Refresh Tokens da sessão são revogados. Um Refresh Token informado no corpo só é revogado se pertencer ao usuário autenticado.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses({
@@ -123,6 +128,6 @@ public interface AuthControllerOpenApi {
                     content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class))
             )
     })
-    @GetMapping("/users/me")
+    @GetMapping("/auth/me")
     ResponseEntity<UserSummaryResponse> me();
 }

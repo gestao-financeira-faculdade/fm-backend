@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: gf-api
+    runtime: docker
+    plan: free
+    region: virginia
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/actuator/health/readiness
+    autoDeployTrigger: commit
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: PORT
+        value: "8080"
+      - key: APP_JWT_SECRET
+        generateValue: true
+      - key: APP_SIMULATION_GRPC_ENABLED
+        value: "false"
+      - key: APP_S3_REGION
+        value: auto
+      - key: APP_S3_BUCKET
+        value: fiscal-attachments
+      - key: APP_S3_PATH_STYLE_ACCESS
+        value: "true"
+      - key: APP_S3_AUTO_CREATE_BUCKET
+        value: "false"
+      - key: OTLP_ENABLED
+        value: "true"
+      - key: APP_CORS_ALLOWED_ORIGINS
+        value: https://gestao-financeira.pages.dev
+      - key: APP_ERROR_BASE_URI
+        value: https://gf-api.onrender.com/api/errors
+      - key: DB_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: APP_S3_ENDPOINT
+        sync: false
+      - key: APP_S3_ACCESS_KEY
+        sync: false
+      - key: APP_S3_SECRET_KEY
+        sync: false
+      - key: OTLP_ENDPOINT
+        sync: false
+      - key: OTLP_AUTHORIZATION
+        sync: false

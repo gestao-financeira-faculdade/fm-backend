@@ -1,5 +1,8 @@
 package com.emanudev.gestaofinanceira.reference.adapter.in.web;
 
+import java.util.Map;
+import java.math.BigDecimal;
+import com.emanudev.gestaofinanceira.reference.application.usecase.GetAccountBalancesUseCase;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -76,6 +79,8 @@ class ReferenceDataControllersTest {
     @Mock
     private UpdateFinancialAccountUseCase updateAccountUseCase;
     @Mock
+    private GetAccountBalancesUseCase accountBalancesUseCase;
+    @Mock
     private UpdateCategoryUseCase updateCategoryUseCase;
     @Mock
     private UpdateCounterpartyUseCase updateCounterpartyUseCase;
@@ -86,7 +91,7 @@ class ReferenceDataControllersTest {
     void setUp() {
         ReferenceDataWebMapper mapper = new ReferenceDataWebMapper();
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new FinancialAccountController(createAccountUseCase, listAccountsUseCase, getAccountUseCase, updateAccountUseCase, mapper),
+                        new FinancialAccountController(createAccountUseCase, listAccountsUseCase, getAccountUseCase, updateAccountUseCase, accountBalancesUseCase, mapper),
                         new CategoryController(createCategoryUseCase, listCategoriesUseCase, getCategoryUseCase, updateCategoryUseCase, mapper),
                         new CounterpartyController(createCounterpartyUseCase, listCounterpartiesUseCase, getCounterpartyUseCase, updateCounterpartyUseCase, mapper)
                 )
@@ -99,6 +104,7 @@ class ReferenceDataControllersTest {
         FinancialAccount account = FinancialAccount.create("Tesouraria", AccountType.OPERATIONAL_LEDGER, Money.brl("5000.00"), FIXED_INSTANT);
         when(createAccountUseCase.execute(eq("Tesouraria"), eq(AccountType.OPERATIONAL_LEDGER), any())).thenReturn(account);
         when(listAccountsUseCase.execute(PageQuery.of(0, 50), false)).thenReturn(PagedResult.of(List.of(account), 1, 0, 50));
+        when(accountBalancesUseCase.currentBalances(List.of(account))).thenReturn(Map.of(account.id(), new BigDecimal("6250.00")));
 
         mockMvc.perform(post("/v1/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -110,6 +116,8 @@ class ReferenceDataControllersTest {
         mockMvc.perform(get("/v1/accounts"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].accountType").value("OPERATIONAL_LEDGER"))
+                .andExpect(jsonPath("$.items[0].initialBalance").value(5000.00))
+                .andExpect(jsonPath("$.items[0].currentBalance").value(6250.00))
                 .andExpect(jsonPath("$.totalElements").value(1));
     }
 

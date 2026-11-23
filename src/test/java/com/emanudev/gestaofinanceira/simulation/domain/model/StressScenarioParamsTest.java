@@ -117,4 +117,17 @@ class StressScenarioParamsTest {
 
         assertThat(params.resolvedSeed()).isPositive();
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("DEF-46: semente 0 ou negativa é recusada, em vez de virar 42 em silêncio")
+    void shouldRejectNonPositiveSeed() {
+        for (long seed : new long[]{0L, -5L}) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> new StressScenarioParams(30, 100_000,
+                            com.emanudev.gestaofinanceira.shared.domain.Percentage.of(5.0),
+                            com.emanudev.gestaofinanceira.shared.domain.Percentage.of(10.0), seed))
+                    .isInstanceOf(com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException.class)
+                    .extracting("errorCode")
+                    .isEqualTo("INVALID_RANDOM_SEED");
+        }
+    }
 }

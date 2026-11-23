@@ -380,16 +380,16 @@ public record FinancialEntry(
         if (status == EntryStatus.CANCELLED) {
             throw new BusinessRuleViolationException("ENTRY_ALREADY_CANCELLED", "Financial entry is already CANCELLED");
         }
-        if (status.isSettled()) {
-            throw new BusinessRuleViolationException(
-                    "CANNOT_CANCEL_SETTLED_ENTRY",
-                    "Cannot cancel a settled financial entry (" + status + ")"
-            );
-        }
         if (hasActiveChildren) {
             throw new BusinessRuleViolationException(
                     "ENTRY_HAS_ACTIVE_CHILDREN",
                     "Cannot cancel financial entry because it has active child split entries"
+            );
+        }
+        if (status.isSettled()) {
+            throw new BusinessRuleViolationException(
+                    "CANNOT_CANCEL_SETTLED_ENTRY",
+                    "Cannot cancel a settled financial entry (" + status + ")"
             );
         }
         if (reason == null || reason.trim().length() < MIN_CANCELLATION_REASON_LENGTH) {

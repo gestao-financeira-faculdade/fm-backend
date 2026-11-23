@@ -289,7 +289,7 @@ class AuthControllerIntegrationTest {
         String analistaToken = tokenProvider.issueAccessToken(analistaUser).accessToken();
         String adminToken = tokenProvider.issueAccessToken(adminUser).accessToken();
 
-        for (String path : new String[]{"/v1/accounts", "/v1/financial-accounts", "/v1/categories"}) {
+        for (String path : new String[]{"/v1/accounts", "/v1/categories"}) {
             mockMvc.perform(post(path).header("Authorization", "Bearer " + analistaToken))
                     .andExpect(status().isForbidden());
             mockMvc.perform(post(path).header("Authorization", "Bearer " + adminToken))
@@ -466,7 +466,7 @@ class AuthControllerIntegrationTest {
     @RestController
     static class RbacProbeController {
 
-        @PostMapping({"/v1/financial-accounts", "/v1/categories", "/v1/counterparties"})
+        @PostMapping({"/v1/categories", "/v1/counterparties"})
         public Map<String, String> createReferenceData() {
             return Map.of("status", "created");
         }

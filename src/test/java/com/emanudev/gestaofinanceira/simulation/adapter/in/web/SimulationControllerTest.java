@@ -28,6 +28,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -90,6 +91,22 @@ class SimulationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"horizonDays\":45}"))
                 .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void shouldRejectOutOfRangePercentagesWithUnprocessableEntityLikeOtherSimulationRules() throws Exception {
+        mockMvc.perform(post("/v1/simulations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedDefaultRate\":150}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_DEFAULT_RATE"));
+        mockMvc.perform(post("/v1/simulations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"variableCostShockPct\":-5}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_COST_SHOCK"));
+
+        verifyNoInteractions(runRiskSimulationPort);
     }
 
     @Test

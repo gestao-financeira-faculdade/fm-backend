@@ -37,10 +37,6 @@ spring:
     default-leniency: false
     deserialization:
       fail-on-unknown-properties: true
-  logging:
-    structured:
-      format:
-        console: ecs
 
 app:
   entries:
@@ -76,6 +72,11 @@ app:
       enabled: ${APP_SIMULATION_GRPC_ENABLED:false}
       fallback-enabled: ${APP_SIMULATION_GRPC_FALLBACK_ENABLED:true}
       deadline-ms: ${APP_SIMULATION_GRPC_DEADLINE_MS:5000}
+
+logging:
+  structured:
+    format:
+      console: ecs
 
 management:
   endpoints:

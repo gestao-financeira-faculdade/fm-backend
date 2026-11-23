@@ -1,6 +1,7 @@
 package com.emanudev.gestaofinanceira.entry.application.usecase;
 
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntryRepositoryPort;
+import com.emanudev.gestaofinanceira.entry.domain.EntryStatus;
 import com.emanudev.gestaofinanceira.entry.domain.FinancialEntry;
 import com.emanudev.gestaofinanceira.shared.application.ActorContext;
 import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
@@ -40,6 +41,10 @@ public class CancelFinancialEntryUseCase {
     public FinancialEntry execute(UUID entryId, String reason) {
         FinancialEntry entry = entryRepository.findById(entryId)
                 .orElseThrow(() -> new ResourceNotFoundException("FinancialEntry", entryId));
+        if (entry.status() == EntryStatus.CANCELLED) {
+            auditTrailPort.skipAuditForCurrentAction();
+            return entry;
+        }
 
         boolean hasActiveChildren = entryRepository.hasActiveChildren(entryId);
         UUID actorId = currentActorUserId();

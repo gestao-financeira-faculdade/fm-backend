@@ -1,5 +1,9 @@
 package com.emanudev.gestaofinanceira.entry.adapter.in.web;
 
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import com.emanudev.gestaofinanceira.entry.application.CreateEntryResult;
 import com.emanudev.gestaofinanceira.entry.adapter.in.web.mapper.FinancialEntryWebMapper;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntryFilter;
 import com.emanudev.gestaofinanceira.entry.application.FinancialEntrySummaryView;
@@ -100,7 +104,7 @@ class FinancialEntryControllerTest {
     @Test
     void shouldCreateFinancialEntryAndReturnCreated() throws Exception {
         FinancialEntry entry = sampleEntry();
-        when(createUseCase.execute(any())).thenReturn(entry);
+        when(createUseCase.execute(any())).thenReturn(new CreateEntryResult(entry, false));
 
         mockMvc.perform(post("/v1/entries")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -118,8 +122,23 @@ class FinancialEntryControllerTest {
                                 }
                                 """))
                 .andExpect(status().isCreated())
+                .andExpect(header().string("Location", "http://localhost/v1/entries/" + entry.id()))
+                .andExpect(header().string("ETag", "\"0\""))
                 .andExpect(jsonPath("$.id").value(entry.id().toString()))
                 .andExpect(jsonPath("$.description").value("Fatura Cloud"));
+    }
+
+    @Test
+    void shouldAnswerIdempotentReplayWith200AndSameLocation() throws Exception {
+        FinancialEntry entry = sampleEntry();
+        when(createUseCase.execute(any())).thenReturn(new CreateEntryResult(entry, true));
+
+        mockMvc.perform(post("/v1/entries")
+                        .header("Idempotency-Key", "idem-001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody("1500.00", "2026-11-15", "2026-10-01")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Location", "http://localhost/v1/entries/" + entry.id()));
     }
 
     @Test
@@ -293,34 +312,66 @@ class FinancialEntryControllerTest {
 
         mockMvc.perform(get("/v1/entries/{id}", entry.id()))
                 .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"0\""))
                 .andExpect(jsonPath("$.id").value(entry.id().toString()));
     }
 
     @Test
-    void shouldCancelFinancialEntry() throws Exception {
+    void shouldCancelWithDeleteAndAnswer204WithoutBody() throws Exception {
         FinancialEntry cancelled = sampleEntry().cancel("Serviço cancelado", ACTOR_ID, FIXED_NOW);
         when(cancelUseCase.execute(cancelled.id(), "Serviço cancelado")).thenReturn(cancelled);
 
-        mockMvc.perform(post("/v1/entries/{id}/cancel", cancelled.id())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"Serviço cancelado\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        mockMvc.perform(delete("/v1/entries/{id}", cancelled.id()).param("reason", "Serviço cancelado"))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
     }
 
     @Test
-    void shouldRejectCancellationReasonLongerThanColumnInBodyOrQuery() throws Exception {
-        UUID id = UUID.randomUUID();
-        String longReason = "m".repeat(501);
+    void shouldNotExposePostCancelAnymore() throws Exception {
+        mockMvc.perform(post("/v1/entries/{id}/cancel", UUID.randomUUID()).param("reason", "Serviço cancelado"))
+                .andExpect(status().isNotFound());
 
-        mockMvc.perform(post("/v1/entries/{id}/cancel", id)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"" + longReason + "\"}"))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(post("/v1/entries/{id}/cancel", id).param("reason", longReason))
+        verifyNoInteractions(cancelUseCase);
+    }
+
+    @Test
+    void shouldRejectCancellationReasonLongerThanColumn() throws Exception {
+        mockMvc.perform(delete("/v1/entries/{id}", UUID.randomUUID()).param("reason", "m".repeat(501)))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(cancelUseCase);
+    }
+
+    @Test
+    void shouldAnswer412WhenIfMatchDoesNotMatchCurrentVersion() throws Exception {
+        FinancialEntry entry = sampleEntry();
+        when(getUseCase.getById(entry.id())).thenReturn(entry);
+
+        mockMvc.perform(delete("/v1/entries/{id}", entry.id())
+                        .param("reason", "Serviço cancelado")
+                        .header("If-Match", "\"7\""))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(jsonPath("$.errorCode").value("PRECONDITION_FAILED"));
+        mockMvc.perform(post("/v1/entries/{id}/settle", entry.id())
+                        .header("If-Match", "\"7\"")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"paidAmount\":1500.00,\"expectedVersion\":0}"))
+                .andExpect(status().isPreconditionFailed());
+
+        verifyNoInteractions(cancelUseCase, settleUseCase);
+    }
+
+    @Test
+    void shouldAcceptMatchingIfMatchOnDelete() throws Exception {
+        FinancialEntry entry = sampleEntry();
+        when(getUseCase.getById(entry.id())).thenReturn(entry);
+        when(cancelUseCase.execute(entry.id(), "Serviço cancelado"))
+                .thenReturn(entry.cancel("Serviço cancelado", ACTOR_ID, FIXED_NOW));
+
+        mockMvc.perform(delete("/v1/entries/{id}", entry.id())
+                        .param("reason", "Serviço cancelado")
+                        .header("If-Match", "W/\"0\""))
+                .andExpect(status().isNoContent());
     }
 
     private static FinancialEntry sampleEntry() {

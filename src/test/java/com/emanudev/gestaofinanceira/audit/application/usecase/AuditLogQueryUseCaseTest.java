@@ -1,5 +1,7 @@
 package com.emanudev.gestaofinanceira.audit.application.usecase;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.emanudev.gestaofinanceira.shared.domain.exception.ResourceNotFoundException;
 import com.emanudev.gestaofinanceira.audit.application.port.in.AuditLogFilter;
 import com.emanudev.gestaofinanceira.audit.application.port.in.AuditLogItemResponse;
 import com.emanudev.gestaofinanceira.audit.application.port.out.AuditLogQueryPort;
@@ -50,11 +52,12 @@ class AuditLogQueryUseCaseTest {
     }
 
     @Test
-    void shouldReturnAuditHistoryForSpecificEntry() {
+    void shouldAnswer404WhenEntryHasNoHistory() {
         UUID entryId = UUID.randomUUID();
         when(auditLogQueryPort.getEntryAuditHistory(entryId)).thenReturn(List.of());
 
-        assertThat(useCase.getEntryAuditHistory(entryId)).isEmpty();
+        assertThatThrownBy(() -> useCase.getEntryAuditHistory(entryId))
+                .isInstanceOf(ResourceNotFoundException.class);
         verify(auditLogQueryPort).getEntryAuditHistory(entryId);
     }
 }

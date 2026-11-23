@@ -71,12 +71,12 @@ class ReferenceDataPersistenceAdaptersTest {
 
     @Test
     void shouldSaveAndFindCounterpartyRoundTrip() {
-        Counterparty domain = Counterparty.create("Fornecedor X", "FX", "99888777000166", CounterpartyType.OTHER, FIXED_INSTANT);
+        Counterparty domain = Counterparty.create("Fornecedor X", "FX", "99888777000100", CounterpartyType.OTHER, FIXED_INSTANT);
         CounterpartyJpaEntity entity = CounterpartyJpaEntity.fromDomain(domain);
         when(counterpartyRepository.save(any())).thenReturn(entity);
-        when(counterpartyRepository.findByTaxId("99888777000166")).thenReturn(Optional.of(entity));
+        when(counterpartyRepository.findByTaxId("99888777000100")).thenReturn(Optional.of(entity));
 
         assertThat(counterpartyAdapter.save(domain)).isEqualTo(domain);
-        assertThat(counterpartyAdapter.findByTaxId("99888777000166")).contains(domain);
+        assertThat(counterpartyAdapter.findByTaxId("99888777000100")).contains(domain);
     }
 }

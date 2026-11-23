@@ -79,7 +79,16 @@ class FiscalAttachmentValidatorTest {
         FiscalAttachmentValidator.ValidatedAttachment first = validator.validate("../../etc/passwd/nota fiscal#1.pdf", pdfBytes);
         FiscalAttachmentValidator.ValidatedAttachment second = validator.validate("nota_fiscal_1.pdf", pdfBytes);
 
-        assertThat(first.sanitizedFileName()).isEqualTo("nota_fiscal_1.pdf");
+        assertThat(first.sanitizedFileName()).isEqualTo("nota fiscal_1.pdf");
         assertThat(first.sha256Checksum()).isEqualTo(second.sha256Checksum());
+    }
+
+    @Test
+    @DisplayName("DEF-46: acentos e pontos seguidos no nome do arquivo são mantidos")
+    void shouldKeepAccentsAndDoubleDotsInFileName() {
+        byte[] pdfBytes = "%PDF-1.4\n%test-content".getBytes(StandardCharsets.US_ASCII);
+
+        assertThat(validator.validate("nota..fiscal.pdf", pdfBytes).sanitizedFileName()).isEqualTo("nota..fiscal.pdf");
+        assertThat(validator.validate("Recibo de manutenção.pdf", pdfBytes).sanitizedFileName()).isEqualTo("Recibo de manutenção.pdf");
     }
 }

@@ -9,6 +9,7 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.S3Configuration;
 
 @Configuration
 public class S3StorageConfig {
@@ -23,7 +24,8 @@ public class S3StorageConfig {
                                 applicationProperties.getS3SecretKey()
                         )
                 ))
-                .forcePathStyle(applicationProperties.isS3PathStyleAccessEnabled());
+                .forcePathStyle(applicationProperties.isS3PathStyleAccessEnabled())
+                .serviceConfiguration(S3Configuration.builder().chunkedEncodingEnabled(false).build());
 
         String endpoint = applicationProperties.getS3Endpoint();
         if (endpoint != null && !endpoint.isBlank()) {

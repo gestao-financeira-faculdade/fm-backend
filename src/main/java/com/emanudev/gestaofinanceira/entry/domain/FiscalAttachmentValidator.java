@@ -7,6 +7,7 @@ import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.AttachmentMaxSiz
 import com.emanudev.gestaofinanceira.entry.domain.strategy.impl.AttachmentNotEmptyValidationImpl;
 
 import java.security.MessageDigest;
+import java.text.Normalizer;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
@@ -74,7 +75,7 @@ public class FiscalAttachmentValidator {
         String trimmed = fileName.trim().replace('\\', '/');
         int lastSlash = trimmed.lastIndexOf('/');
         String baseName = lastSlash >= 0 ? trimmed.substring(lastSlash + 1) : trimmed;
-        String cleaned = baseName.replaceAll("[^a-zA-Z0-9._-]", "_");
+        String cleaned = Normalizer.normalize(baseName, Normalizer.Form.NFC).replaceAll("[^\\p{L}\\p{N}._ -]", "_");
         if (cleaned.isBlank() || cleaned.equals(".") || cleaned.equals("..")) {
             return "attachment";
         }

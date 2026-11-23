@@ -5,6 +5,9 @@ import com.emanudev.gestaofinanceira.entry.domain.FiscalAttachment;
 import com.emanudev.gestaofinanceira.entry.domain.InvalidAttachmentFormatException;
 import java.io.IOException;
 import java.util.Optional;
+import java.nio.charset.StandardCharsets;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -34,14 +37,14 @@ public class AttachmentWebMapper {
                 .orElse("attachment");
     }
 
-    public ResponseEntity<byte[]> toDownloadResponse(DownloadedAttachment downloaded) {
+    public ResponseEntity<Resource> toDownloadResponse(DownloadedAttachment downloaded) {
         FiscalAttachment metadata = downloaded.attachment();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(metadata.contentType()));
-        headers.setContentLength(downloaded.content().length);
+        headers.setContentLength(metadata.fileSizeBytes());
         headers.setContentDisposition(
-                ContentDisposition.attachment().filename(metadata.originalFileName()).build()
+                ContentDisposition.attachment().filename(metadata.originalFileName(), StandardCharsets.UTF_8).build()
         );
-        return new ResponseEntity<>(downloaded.content(), headers, HttpStatus.OK);
+        return new ResponseEntity<>(new InputStreamResource(downloaded.content()), headers, HttpStatus.OK);
     }
 }

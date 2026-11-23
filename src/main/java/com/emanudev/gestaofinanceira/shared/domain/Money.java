@@ -2,11 +2,18 @@ package com.emanudev.gestaofinanceira.shared.domain;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Currency;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public record Money(BigDecimal amount, String currency) {
 
     public static final String DEFAULT_CURRENCY = "BRL";
+
+    private static final Set<String> ISO_CURRENCY_CODES = Currency.getAvailableCurrencies().stream()
+            .map(Currency::getCurrencyCode)
+            .collect(Collectors.toUnmodifiableSet());
 
     public Money {
         if (amount == null) {
@@ -21,6 +28,19 @@ public record Money(BigDecimal amount, String currency) {
 
     public static Money of(BigDecimal amount, String currency) {
         return new Money(amount, currency);
+    }
+
+    /** Para valores novos vindos do usuário; o construtor aceita códigos legados já gravados. */
+    public static Money ofIso(BigDecimal amount, String currency) {
+        return new Money(amount, requireIsoCurrency(currency));
+    }
+
+    public static String requireIsoCurrency(String currency) {
+        String code = currency == null ? "" : currency.trim().toUpperCase(Locale.ROOT);
+        if (!ISO_CURRENCY_CODES.contains(code)) {
+            throw new IllegalArgumentException("Currency is not a valid ISO-4217 code: " + currency);
+        }
+        return code;
     }
 
     public static Money brl(BigDecimal amount) {

@@ -8,12 +8,13 @@ import com.emanudev.gestaofinanceira.simulation.application.port.in.GetLatestSim
 import com.emanudev.gestaofinanceira.simulation.application.port.in.RunRiskSimulationPort;
 import com.emanudev.gestaofinanceira.simulation.domain.model.RiskSimulationResult;
 import com.emanudev.gestaofinanceira.simulation.domain.model.StressScenarioParams;
+import java.net.URI;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
 public class SimulationController implements SimulationControllerOpenApi {
@@ -45,7 +46,11 @@ public class SimulationController implements SimulationControllerOpenApi {
     public ResponseEntity<SimulationResponse> runSimulation(RunSimulationRequest request) {
         StressScenarioParams params = simulationWebMapper.toDomainParams(request);
         RiskSimulationResult result = runRiskSimulationPort.runSimulation(params);
-        return ResponseEntity.status(HttpStatus.CREATED).body(SimulationResponse.fromDomain(result));
+        URI location = ServletUriComponentsBuilder.fromCurrentRequestUri()
+                .path("/{id}")
+                .buildAndExpand(result.id())
+                .toUri();
+        return ResponseEntity.created(location).body(SimulationResponse.fromDomain(result));
     }
 
     @Override

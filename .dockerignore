@@ -1,0 +1,10 @@
+target/
+hpc-engine/build/
+.git/
+.idea/
+.agents/
+.github/
+docs/
+grafana/
+prometheus/
+**/*.log

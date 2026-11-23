@@ -3,6 +3,7 @@ package com.emanudev.gestaofinanceira.identity.application.port.out;
 import com.emanudev.gestaofinanceira.identity.domain.model.User;
 
 import java.time.Instant;
+import java.util.UUID;
 
 public interface TokenProviderPort {
 
@@ -13,7 +14,7 @@ public interface TokenProviderPort {
     ) {
     }
 
-    IssueTokenResult issueAccessToken(User user);
+    IssueTokenResult issueAccessToken(User user, UUID sessionId);
 
     String generateRefreshToken();
 

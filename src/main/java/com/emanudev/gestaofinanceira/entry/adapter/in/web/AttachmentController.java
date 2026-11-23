@@ -7,12 +7,14 @@ import com.emanudev.gestaofinanceira.entry.application.usecase.DownloadFiscalAtt
 import com.emanudev.gestaofinanceira.entry.application.usecase.ListFiscalAttachmentsUseCase;
 import com.emanudev.gestaofinanceira.entry.application.usecase.UploadFiscalAttachmentUseCase;
 import com.emanudev.gestaofinanceira.entry.domain.FiscalAttachment;
+import java.net.URI;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
+import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
 public class AttachmentController implements AttachmentControllerOpenApi {
@@ -39,7 +41,11 @@ public class AttachmentController implements AttachmentControllerOpenApi {
         byte[] bytes = attachmentWebMapper.extractBytes(file);
         String originalFilename = attachmentWebMapper.resolveFilename(file);
         FiscalAttachment saved = uploadFiscalAttachmentUseCase.execute(id, originalFilename, bytes);
-        return ResponseEntity.status(HttpStatus.CREATED).body(FiscalAttachmentResponse.fromDomain(saved));
+        URI location = ServletUriComponentsBuilder.fromCurrentRequestUri()
+                .path("/{attachmentId}/download")
+                .buildAndExpand(saved.id())
+                .toUri();
+        return ResponseEntity.created(location).body(FiscalAttachmentResponse.fromDomain(saved));
     }
 
     @Override
@@ -51,7 +57,7 @@ public class AttachmentController implements AttachmentControllerOpenApi {
     }
 
     @Override
-    public ResponseEntity<byte[]> downloadAttachment(UUID id, UUID attachmentId) {
+    public ResponseEntity<Resource> downloadAttachment(UUID id, UUID attachmentId) {
         DownloadedAttachment downloaded = downloadFiscalAttachmentUseCase.execute(id, attachmentId);
         return attachmentWebMapper.toDownloadResponse(downloaded);
     }

@@ -1,5 +1,6 @@
 package com.emanudev.gestaofinanceira.entry.application;
 
+import com.emanudev.gestaofinanceira.entry.application.CreateEntryResult;
 import com.emanudev.gestaofinanceira.entry.application.usecase.CreateFinancialEntryUseCase;
 import com.emanudev.gestaofinanceira.entry.application.usecase.MarkOverdueEntriesUseCase;
 import com.emanudev.gestaofinanceira.entry.application.usecase.SettleFinancialEntryUseCase;
@@ -22,6 +23,8 @@ import com.emanudev.gestaofinanceira.shared.application.ActorContextPort;
 import com.emanudev.gestaofinanceira.shared.application.AuditAction;
 import com.emanudev.gestaofinanceira.shared.application.AuditTrailPort;
 import com.emanudev.gestaofinanceira.shared.domain.Money;
+import com.emanudev.gestaofinanceira.shared.domain.exception.BusinessRuleViolationException;
+import com.emanudev.gestaofinanceira.shared.domain.exception.ConcurrencyConflictException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +42,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -136,16 +140,41 @@ class FinancialEntryUseCasesTest {
         when(actorContextPort.getCurrentActor()).thenReturn(ActorContext.user(UUID.randomUUID(), "analista", "ANALISTA", "127.0.0.1"));
         when(entryRepository.save(any(FinancialEntry.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        FinancialEntry created = createFinancialEntryUseCase.execute(command);
+        CreateEntryResult first = createFinancialEntryUseCase.execute(command);
+        FinancialEntry created = first.entry();
+        assertThat(first.replayed()).isFalse();
 
         assertThat(created.status()).isEqualTo(EntryStatus.PENDING);
         assertThat(created.originalAmount()).isEqualTo(Money.brl("1200.00"));
         verify(auditTrailPort).recordTransition(eq("FINANCIAL_ENTRY"), eq(created.id()), eq(AuditAction.CREATE), eq(null), eq(created));
 
         when(entryRepository.findByIdempotencyKey("idem-key-123")).thenReturn(Optional.of(created));
-        FinancialEntry duplicateCall = createFinancialEntryUseCase.execute(command);
-        assertThat(duplicateCall.id()).isEqualTo(created.id());
+        CreateEntryResult duplicateCall = createFinancialEntryUseCase.execute(command);
+        assertThat(duplicateCall.entry().id()).isEqualTo(created.id());
+        assertThat(duplicateCall.replayed()).isTrue();
         verify(entryRepository, times(1)).save(any());
+        verify(auditTrailPort).skipAuditForCurrentAction();
+    }
+
+    @Test
+    @DisplayName("DEF-20: mesma Idempotency-Key com outro conteúdo é recusada com IDEMPOTENCY_KEY_REUSED")
+    void shouldRejectIdempotencyKeyReusedWithDifferentPayload() {
+        FinancialEntry original = FinancialEntry.create(
+                "idem-key-456", activeAccount.id(), operationalCategory.id(), null, EntryType.PAYABLE,
+                "Fatura Cloud", TODAY, TODAY.plusDays(10), Money.brl("1200.00"), null, TODAY, FIXED_INSTANT
+        );
+        CreateEntryCommand otherAmount = new CreateEntryCommand(
+                "idem-key-456", activeAccount.id(), operationalCategory.id(), null, EntryType.PAYABLE,
+                "Fatura Cloud", TODAY, TODAY.plusDays(10), Money.brl("9999.00")
+        );
+        when(entryRepository.findByIdempotencyKey("idem-key-456")).thenReturn(Optional.of(original));
+
+        assertThatThrownBy(() -> createFinancialEntryUseCase.execute(otherAmount))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .extracting("errorCode")
+                .isEqualTo(CreateFinancialEntryUseCase.IDEMPOTENCY_KEY_REUSED);
+        verify(entryRepository, never()).save(any());
+        verify(auditTrailPort, never()).skipAuditForCurrentAction();
     }
 
     @Test
@@ -188,6 +217,35 @@ class FinancialEntryUseCasesTest {
                 eq(existing),
                 any()
         );
+    }
+
+    @Test
+    @DisplayName("Should reject settlement with 409 conflict when the expected version is stale")
+    void shouldRejectSettlementWithStaleExpectedVersion() {
+        FinancialEntry existing = FinancialEntry.create(
+                null,
+                activeAccount.id(),
+                operationalCategory.id(),
+                null,
+                EntryType.PAYABLE,
+                "Fornecedor TI",
+                TODAY,
+                TODAY.plusDays(5),
+                Money.brl("1000.00"),
+                UUID.randomUUID(),
+                TODAY,
+                FIXED_INSTANT
+        );
+        when(entryRepository.findById(existing.id())).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> settleFinancialEntryUseCase.execute(
+                existing.id(),
+                SettlementCommand.full(Money.brl("1000.00"), TODAY),
+                existing.version() + 1
+        )).isInstanceOf(ConcurrencyConflictException.class);
+
+        verify(entryRepository, never()).save(any());
+        verify(auditTrailPort, never()).recordTransition(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -273,5 +331,22 @@ class FinancialEntryUseCasesTest {
                 any(FinancialEntry.class)
         );
         verify(entryRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("DEF-46: anexo em lançamento cancelado é recusado com ENTRY_CANCELLED")
+    void shouldRejectAttachmentOnCancelledEntry() {
+        FinancialEntry cancelled = FinancialEntry.create(
+                null, activeAccount.id(), operationalCategory.id(), null, EntryType.PAYABLE,
+                "Lançamento cancelado", TODAY, TODAY.plusDays(5), Money.brl("100.00"), null, TODAY, FIXED_INSTANT
+        ).cancel("Lançamento duplicado", UUID.randomUUID(), FIXED_INSTANT);
+        when(entryRepository.findById(cancelled.id())).thenReturn(Optional.of(cancelled));
+
+        assertThatThrownBy(() -> uploadFiscalAttachmentUseCase.execute(
+                cancelled.id(), "nf.pdf", "%PDF-1.7\nx".getBytes(StandardCharsets.US_ASCII)))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .extracting("errorCode")
+                .isEqualTo("ENTRY_CANCELLED");
+        verify(attachmentStoragePort, never()).store(any(), any(), any(), any());
     }
 }

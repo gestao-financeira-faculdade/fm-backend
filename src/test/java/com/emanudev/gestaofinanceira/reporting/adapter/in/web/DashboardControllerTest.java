@@ -93,6 +93,8 @@ class DashboardControllerTest {
                 Money.brl("154320.50"),
                 Money.brl("18200.00"),
                 Money.brl("9450.75"),
+                Money.brl("1200.00"),
+                Money.brl("300.00"),
                 Percentage.of("4.2500"),
                 referenceDate,
                 generatedAt
@@ -119,6 +121,8 @@ class DashboardControllerTest {
                 Money.brl("100000.00"),
                 Money.brl("5000.00"),
                 Money.brl("2000.00"),
+                Money.brl("0.00"),
+                Money.brl("0.00"),
                 Percentage.zero(),
                 referenceDate,
                 Instant.parse("2026-10-15T12:00:00Z")
@@ -221,7 +225,7 @@ class DashboardControllerTest {
                         .param("search", "Fornecedor"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
-                        org.hamcrest.Matchers.containsString("lancamentos-financeiros.csv")))
+                        org.hamcrest.Matchers.matchesPattern(".*relatorio-financeiro-\\d{4}-\\d{2}-\\d{2}\\.csv.*")))
                 .andReturn();
 
         String body = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
@@ -231,7 +235,7 @@ class DashboardControllerTest {
     }
 
     @Test
-    void shouldExportPdfReportViaPostWithJsonPayload() throws Exception {
+    void shouldExportPdfReportViaSingleGetRoute() throws Exception {
         ReportExportFilter expectedFilter = new ReportExportFilter(
                 "RECEIVABLE",
                 "PENDING",
@@ -259,19 +263,19 @@ class DashboardControllerTest {
 
         when(dashboardQueryPort.fetchReportEntries(eq(expectedFilter))).thenReturn(List.of(row));
 
-        MvcResult result = mockMvc.perform(post("/v1/reports/export")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "format": "PDF",
-                                  "entryType": "RECEIVABLE",
-                                  "status": "PENDING"
-                                }
-                                """))
+        mockMvc.perform(post("/v1/reports/export").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/v1/entries/export/pdf"))
+                .andExpect(status().isNotFound());
+
+        MvcResult result = mockMvc.perform(get("/v1/reports/entries/export")
+                        .param("format", "PDF")
+                        .param("entryType", "RECEIVABLE")
+                        .param("status", "PENDING"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
-                        org.hamcrest.Matchers.containsString("relatorio-financeiro.pdf")))
+                        org.hamcrest.Matchers.matchesPattern(".*relatorio-financeiro-\\d{4}-\\d{2}-\\d{2}\\.pdf.*")))
                 .andReturn();
 
         String pdfContent = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.ISO_8859_1);
